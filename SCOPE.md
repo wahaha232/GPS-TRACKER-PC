@@ -22,6 +22,9 @@ PC 是**獨立裝置**：模擬產生的紀錄以裝置名稱 `PC` 上傳，**�
   `AddScriptToExecuteOnDocumentCreatedAsync` 注入 `window.GT_FEATURES = { photos: false, steps: false, share: false }`，
   網頁讀這個開關來隱藏；沒有這個開關時（手機、GitHub Pages）網頁維持原樣
 - 單元測試：xUnit（或 MSTest），`dotnet test` 要能跑過
+- **打包（2026-10-22 使用者需求：要拿到其他電腦測試）**：發佈版一律 **self-contained、win-x64**（`--self-contained true`），
+  別台電腦不用先裝 .NET；網頁、simulator.html、MapLibre 都要包在輸出裡，整個資料夾（或 ZIP）複製過去就能執行。
+  不要依賴本機路徑（例如 `D:\Claude\...`）；WebView2 Runtime 由 Windows 提供，沒有時要顯示清楚的提示與下載連結，不要直接當掉
 
 ## 三、相關位置
 
