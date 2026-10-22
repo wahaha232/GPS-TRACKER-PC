@@ -11,7 +11,7 @@
 
 | # | 內容 | 預估週額度 | 狀態 |
 |---|---|---|---|
-| 1 | WPF (.NET 9) + WebView2 外殼、載入本機 gpstracker-web、功能開關（藏拍照／步數／分享） | 4% | 未開始 |
+| 1 | WPF (.NET 9) + WebView2 外殼、載入本機 gpstracker-web、功能開關（藏拍照／步數／分享） | 4% | 完成 |
 | 2 | 從 GitHub 同步 data/ 到本機、GitHub Token 以 DPAPI 加密保存 | 3% | 未開始 |
 | 3 | GPX 批次匯出、批次匯入（多選、拖放、進度） | 4% | 未開始 |
 | 4 | App 自動更新＋GitHub Actions 建置發佈（Release tag gpstracker-desktop-latest） | 4% | 未開始 |
@@ -25,4 +25,5 @@
 ## 每日紀錄
 
 - 2026-10-22｜Kilo｜依指示先做第 5 階段：把 GeoMath、SimulationRoute／RouteSimulator、GpxStreamImporter、LocationDocumentCodec、RandomRouteGenerator、SampleRouteFactory、RouteJsonCodec（原在 RouteRepository.kt，改用 System.Text.Json）移植到 `GpsTrackerPc.Simulation`，57 個 xUnit 測試全部通過｜測試 57/57 通過｜下一步：第 1 階段 WPF + WebView2 外殼
+- 2026-10-22｜Kilo｜完成第 1 階段：新增 `GpsTrackerPc.App`（WPF + WebView2），建置時從 `gpstracker-web` 複製網頁到輸出資料夾，注入 `GT_FEATURES` 關閉拍照／步數／分享；網頁原檔加入對應開關、隱藏步數環遊與分享按鈕、忽略桌面版網址參數；以 WebView2 實際載入驗證各頁開關生效｜網頁測試 90/90、C# 測試 57/57 通過｜下一步：第 2 階段 GitHub data/ 同步與 DPAPI Token
 

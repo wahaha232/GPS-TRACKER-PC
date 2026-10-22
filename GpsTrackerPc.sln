@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GpsTrackerPc.Simulation", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GpsTrackerPc.Simulation.Tests", "tests\GpsTrackerPc.Simulation.Tests\GpsTrackerPc.Simulation.Tests.csproj", "{ED4A18D6-0C10-46ED-85D1-C61D33FB18BA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GpsTrackerPc.App", "src\GpsTrackerPc.App\GpsTrackerPc.App.csproj", "{5AA4505C-EBF2-4F07-9BA7-E22943507059}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -43,6 +45,18 @@ Global
 		{ED4A18D6-0C10-46ED-85D1-C61D33FB18BA}.Release|x64.Build.0 = Release|Any CPU
 		{ED4A18D6-0C10-46ED-85D1-C61D33FB18BA}.Release|x86.ActiveCfg = Release|Any CPU
 		{ED4A18D6-0C10-46ED-85D1-C61D33FB18BA}.Release|x86.Build.0 = Release|Any CPU
+		{5AA4505C-EBF2-4F07-9BA7-E22943507059}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5AA4505C-EBF2-4F07-9BA7-E22943507059}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5AA4505C-EBF2-4F07-9BA7-E22943507059}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5AA4505C-EBF2-4F07-9BA7-E22943507059}.Debug|x64.Build.0 = Debug|Any CPU
+		{5AA4505C-EBF2-4F07-9BA7-E22943507059}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5AA4505C-EBF2-4F07-9BA7-E22943507059}.Debug|x86.Build.0 = Debug|Any CPU
+		{5AA4505C-EBF2-4F07-9BA7-E22943507059}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5AA4505C-EBF2-4F07-9BA7-E22943507059}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5AA4505C-EBF2-4F07-9BA7-E22943507059}.Release|x64.ActiveCfg = Release|Any CPU
+		{5AA4505C-EBF2-4F07-9BA7-E22943507059}.Release|x64.Build.0 = Release|Any CPU
+		{5AA4505C-EBF2-4F07-9BA7-E22943507059}.Release|x86.ActiveCfg = Release|Any CPU
+		{5AA4505C-EBF2-4F07-9BA7-E22943507059}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -50,5 +64,6 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{F75750E0-6942-4BC0-8FEA-09F54B5DC965} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{ED4A18D6-0C10-46ED-85D1-C61D33FB18BA} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{5AA4505C-EBF2-4F07-9BA7-E22943507059} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal
