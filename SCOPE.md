@@ -69,6 +69,15 @@ PC 是**獨立裝置**：模擬產生的紀錄以裝置名稱 `PC` 上傳，**�
    建置時要從 `wahaha232/ANDROID-APP-DEV` 取出 `gpstracker-web` 一起打包（公開 repo，不需要 Token）。
    App 查最新版（`https://api.github.com/repos/wahaha232/GPS-TRACKER-PC/releases/tags/gpstracker-desktop-latest`，公開 repo 不用 Token）→ 比版本 → 下載（網址必須以 `https://github.com/wahaha232/GPS-TRACKER-PC/releases/download/` 開頭）
    → 驗 SHA-256 → 舊 EXE 改名 `.old`、放新檔、重啟，下次啟動刪 `.old`
+   - **雲端更新與版本號（2026-10-22 使用者需求）**：
+     - 版本顯示：主視窗標題列和設定畫面都顯示目前版本（例如「GPS Tracker PC v0.2.0」）；設定畫面另外顯示「最後檢查更新時間」
+     - 雲端更新：主視窗選單加「檢查雲端更新」；有新版時顯示「目前版本 → 新版本」和更新說明（Release 的說明文字），使用者按「更新」才下載安裝；已是最新版要明確顯示「已是最新版本」；沒網路或 GitHub 連不上要顯示原因，不能當掉
+     - 啟動時自動檢查一次（一天最多一次），有新版只提示，不自動安裝；可以在設定關掉自動檢查
+     - **版本號規則**：用 `主版本.次版本.修訂`（例如 0.2.0），**每次發佈都必須進版**，版本號只在 `GpsTrackerPc.App.csproj` 的 `<Version>` 一個地方設定，程式和打包都從這裡讀：
+       修 bug → 修訂 +1（0.2.0 → 0.2.1）；加功能 → 次版本 +1、修訂歸 0（0.2.1 → 0.3.0）；測試完成、正式給多台電腦使用 → 1.0.0
+     - 每次進版要在本資料夾的 `CHANGELOG.md` 加一段（版本、日期、改了什麼，繁體中文），Release 的更新說明就用這一段
+     - GitHub Actions 發佈前要檢查：新版本號必須**大於**目前 Release 上的版本，沒進版就停止發佈並顯示錯誤；`CHANGELOG.md` 沒有這個版本的段落也停止
+     - App 端比版本時只接受比目前版本**新**的版本，不能被舊版或同版覆蓋（降版保護）
 6. **模擬**（從 GPS 定位器移植成 C#，連同單元測試）：
    - `RouteSimulator.kt`：速度預設（走路 5／跑步 10／騎車 18／開車 40 km/h）、停留點、速度自然起伏
    - `GpxStreamImporter.kt`、`LocationDocumentCodec.kt`：GPX 依時間戳記播放、模擬 GPS 中斷
