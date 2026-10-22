@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Windows;
 using GpsTrackerPc.App.Infrastructure;
 using GpsTrackerPc.Core.Data;
+using GpsTrackerPc.Core.Gpx;
 using GpsTrackerPc.Core.Security;
 using Microsoft.Web.WebView2.Core;
 
@@ -250,7 +251,50 @@ public partial class MainWindow : Window
 
     private async void SyncButton_Click(object sender, RoutedEventArgs e) => await RunSyncAsync(automatic: false);
 
-    private void SettingsButton_Click(object sender, RoutedEventArgs e)
+    private void ExportGpx_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new ExportWindow(_dataDirectory)
+        {
+            Owner = this,
+        };
+        window.ShowDialog();
+    }
+
+    private async void ImportGpx_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_tokenStore.HasToken)
+        {
+            var answer = MessageBox.Show(
+                this,
+                "匯入 GPX 需要 GitHub Token，請先到設定畫面輸入。\n\n要現在開啟設定嗎？",
+                "尚未設定 Token",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (answer == MessageBoxResult.Yes)
+            {
+                OpenSettings();
+            }
+
+            return;
+        }
+
+        var uploader = new GitHubRecordUploader(_httpClient, _tokenStore);
+        var window = new ImportWindow(_tokenStore, uploader)
+        {
+            Owner = this,
+        };
+        window.ShowDialog();
+
+        if (window.UploadedCount > 0)
+        {
+            // 上傳後重新下載 manifest／新紀錄，讓本機資料與網站一致。
+            await RunSyncAsync(automatic: false);
+        }
+    }
+
+    private void SettingsButton_Click(object sender, RoutedEventArgs e) => OpenSettings();
+
+    private void OpenSettings()
     {
         var window = new SettingsWindow(_tokenStore)
         {

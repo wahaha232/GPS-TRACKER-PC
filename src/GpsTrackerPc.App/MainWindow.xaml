@@ -22,7 +22,14 @@
             BorderThickness="0,0,0,1"
             Padding="14,8">
       <Grid>
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Grid.Column="0"
+                    Orientation="Horizontal"
+                    VerticalAlignment="Center">
           <TextBlock Text="🛰️ GPS Tracker（PC）"
                      Foreground="#E2E8F0"
                      FontSize="14"
@@ -38,7 +45,8 @@
                      VerticalAlignment="Center" />
         </StackPanel>
 
-        <StackPanel Orientation="Horizontal"
+        <StackPanel Grid.Column="1"
+                    Orientation="Horizontal"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Center">
           <Button x:Name="SyncButton"
@@ -49,6 +57,20 @@
                   Foreground="#E2E8F0"
                   BorderBrush="#334155"
                   Click="SyncButton_Click" />
+          <Button Content="匯出 GPX"
+                  Padding="12,5"
+                  Margin="0,0,8,0"
+                  Background="#1E293B"
+                  Foreground="#E2E8F0"
+                  BorderBrush="#334155"
+                  Click="ExportGpx_Click" />
+          <Button Content="匯入 GPX"
+                  Padding="12,5"
+                  Margin="0,0,8,0"
+                  Background="#1E293B"
+                  Foreground="#E2E8F0"
+                  BorderBrush="#334155"
+                  Click="ImportGpx_Click" />
           <Button Content="設定"
                   Padding="12,5"
                   Background="#1E293B"

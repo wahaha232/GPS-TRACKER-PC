@@ -1,0 +1,117 @@
+<Window x:Class="GpsTrackerPc.App.ExportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GPX 匯出"
+        Width="920"
+        Height="640"
+        MinWidth="760"
+        MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        Background="#0B1220">
+  <Grid Margin="18">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <StackPanel Grid.Row="0">
+      <TextBlock Text="GPX 匯出"
+                 Foreground="#E2E8F0"
+                 FontSize="20"
+                 FontWeight="SemiBold" />
+      <TextBlock Text="從本機同步的紀錄挑選一筆或多筆，選一個資料夾後一次全部存成 &lt;trackId&gt;.gpx。"
+                 Foreground="#94A3B8"
+                 FontSize="12"
+                 Margin="0,6,0,0" />
+    </StackPanel>
+
+    <StackPanel Grid.Row="1"
+                Orientation="Horizontal"
+                Margin="0,14,0,10">
+      <Button Content="全選"
+              Padding="12,5"
+              Background="#1E293B"
+              Foreground="#E2E8F0"
+              BorderBrush="#334155"
+              Click="SelectAll_Click" />
+      <Button Content="全不選"
+              Padding="12,5"
+              Margin="8,0,0,0"
+              Background="#1E293B"
+              Foreground="#E2E8F0"
+              BorderBrush="#334155"
+              Click="SelectNone_Click" />
+      <TextBlock x:Name="CountText"
+                 Foreground="#94A3B8"
+                 FontSize="12"
+                 VerticalAlignment="Center"
+                 Margin="14,0,0,0" />
+    </StackPanel>
+
+    <ListView x:Name="RecordList"
+              Grid.Row="2"
+              ItemsSource="{Binding Records}"
+              Background="#0F172A"
+              Foreground="#E2E8F0"
+              BorderBrush="#1E293B"
+              ScrollViewer.HorizontalScrollBarVisibility="Auto">
+      <ListView.View>
+        <GridView>
+          <GridViewColumn Width="46">
+            <GridViewColumn.CellTemplate>
+              <DataTemplate>
+                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          HorizontalAlignment="Center" />
+              </DataTemplate>
+            </GridViewColumn.CellTemplate>
+          </GridViewColumn>
+          <GridViewColumn Header="日期" Width="150" DisplayMemberBinding="{Binding DateText}" />
+          <GridViewColumn Header="移動方式" Width="130" DisplayMemberBinding="{Binding ModeText}" />
+          <GridViewColumn Header="距離" Width="100" DisplayMemberBinding="{Binding DistanceText}" />
+          <GridViewColumn Header="時間" Width="100" DisplayMemberBinding="{Binding DurationText}" />
+          <GridViewColumn Header="裝置" Width="150" DisplayMemberBinding="{Binding DeviceText}" />
+          <GridViewColumn Header="trackId" Width="300" DisplayMemberBinding="{Binding TrackId}" />
+        </GridView>
+      </ListView.View>
+    </ListView>
+
+    <StackPanel Grid.Row="3"
+                Margin="0,12,0,0">
+      <ProgressBar x:Name="Progress"
+                   Height="7"
+                   Minimum="0"
+                   Maximum="1"
+                   Background="#1E293B"
+                   Foreground="#38BDF8" />
+      <TextBlock x:Name="StatusText"
+                 Foreground="#94A3B8"
+                 FontSize="12"
+                 Margin="0,8,0,0"
+                 TextWrapping="Wrap" />
+    </StackPanel>
+
+    <StackPanel Grid.Row="4"
+                Orientation="Horizontal"
+                HorizontalAlignment="Right"
+                Margin="0,14,0,0">
+      <Button x:Name="ExportButton"
+              Content="選擇資料夾並匯出"
+              Padding="16,7"
+              Background="#1E293B"
+              Foreground="#E2E8F0"
+              BorderBrush="#334155"
+              Click="Export_Click" />
+      <Button x:Name="CloseButton"
+              Content="關閉"
+              Padding="16,7"
+              Margin="8,0,0,0"
+              Background="#1E293B"
+              Foreground="#E2E8F0"
+              BorderBrush="#334155"
+              Click="Close_Click" />
+    </StackPanel>
+  </Grid>
+</Window>
