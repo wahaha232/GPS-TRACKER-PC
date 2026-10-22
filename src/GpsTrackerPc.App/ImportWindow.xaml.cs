@@ -98,6 +98,18 @@ public partial class ImportWindow : Window
                 continue; // 同一個檔案不重複加入清單。
             }
 
+            var sizeCheck = GpxImportFileGuard.Check(path);
+            if (!sizeCheck.IsAllowed)
+            {
+                Rows.Add(new ImportRow
+                {
+                    FileName = Path.GetFileName(path),
+                    FilePath = path,
+                    Status = "略過：" + sizeCheck.ErrorMessage,
+                });
+                continue;
+            }
+
             var row = new ImportRow
             {
                 FileName = Path.GetFileName(path),
