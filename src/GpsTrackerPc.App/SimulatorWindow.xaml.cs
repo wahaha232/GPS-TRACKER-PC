@@ -8,6 +8,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using GpsTrackerPc.App.Infrastructure;
+using GpsTrackerPc.Core.Security;
 using GpsTrackerPc.Core.Simulator;
 using GpsTrackerPc.Simulation.Model;
 using GpsTrackerPc.Simulation.Routes;
@@ -28,6 +29,8 @@ public partial class SimulatorWindow : Window
     private readonly FavoritesStore _favorites;
     private readonly RouteLibraryStore _library;
     private readonly HttpClient _searchClient;
+    private readonly HttpClient _uploadClient;
+    private readonly TokenStore _tokenStore;
     private readonly NominatimGeocoder _geocoder;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly DispatcherTimer _playbackTimer;
@@ -44,13 +47,15 @@ public partial class SimulatorWindow : Window
     private PlaybackResult? _lastPlayback;
     private int _sentSampleCount;
 
-    public SimulatorWindow()
+    public SimulatorWindow(TokenStore tokenStore)
     {
         InitializeComponent();
 
+        _tokenStore = tokenStore ?? throw new ArgumentNullException(nameof(tokenStore));
         _favorites = new FavoritesStore(AppPaths.FavoritesFile);
         _library = new RouteLibraryStore(AppPaths.RoutesDirectory);
         _searchClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        _uploadClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
         _geocoder = new NominatimGeocoder(_searchClient);
         _playbackTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
         _playbackTimer.Tick += PlaybackTimer_Tick;
@@ -308,6 +313,7 @@ public partial class SimulatorWindow : Window
         if (_playback == null || _playback.State is PlaybackState.Stopped or PlaybackState.Completed)
         {
             _lastPlayback = null;
+            UploadRecordButton.IsEnabled = false;
         }
 
         if (!_webReady)
@@ -1037,6 +1043,36 @@ public partial class SimulatorWindow : Window
         }
     }
 
+    private void UploadRecord_Click(object sender, RoutedEventArgs e)
+    {
+        if (_lastPlayback == null)
+        {
+            SetStatus("請先即時播放或直接產生一次模擬結果。");
+            return;
+        }
+
+        if (!_tokenStore.HasToken)
+        {
+            MessageBox.Show(
+                this,
+                "上傳需要 GitHub Token，請先回主畫面按「設定」輸入。",
+                "尚未設定 Token",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        var window = new SimulatedUploadWindow(_lastPlayback, _tokenStore, _uploadClient)
+        {
+            Owner = this,
+        };
+        window.ShowDialog();
+        if (window.Uploaded)
+        {
+            SetStatus("模擬紀錄已上傳（裝置 PC、來源 simulated）。");
+        }
+    }
+
     private void PlaybackTimer_Tick(object? sender, EventArgs e)
     {
         if (_playback?.State != PlaybackState.Playing)
@@ -1143,6 +1179,7 @@ public partial class SimulatorWindow : Window
         PausePlaybackButton.IsEnabled = _playback?.State == PlaybackState.Playing;
         ResumePlaybackButton.IsEnabled = _playback?.State == PlaybackState.Paused;
         StopPlaybackButton.IsEnabled = active;
+        UploadRecordButton.IsEnabled = !active && !_directGenerating && _lastPlayback != null;
         LapsBox.IsEnabled = !active && !_directGenerating && _route.Loop;
         PlaybackSpeedBox.IsEnabled = !_directGenerating;
     }
@@ -1234,6 +1271,7 @@ public partial class SimulatorWindow : Window
         _playback?.Stop();
         _lifetime.Cancel();
         _searchClient.Dispose();
+        _uploadClient.Dispose();
         MapView.Dispose();
     }
 }

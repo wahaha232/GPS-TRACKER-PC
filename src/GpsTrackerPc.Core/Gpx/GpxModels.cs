@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace GpsTrackerPc.Core.Gpx;
 
@@ -53,7 +54,7 @@ public sealed class GpxTrack
 {
     public string TrackId { get; init; } = string.Empty;
 
-    public long StartTimeMs { get; init; }
+    public long StartTimeMs { get; set; }
 
     public long EndTimeMs { get; init; }
 
@@ -91,7 +92,11 @@ public sealed class GpxTrack
     /// <summary>[[模式, 起秒, 迄秒]]；匯入時整條路線只有一段。</summary>
     public List<object[]> Segments { get; init; } = new();
 
-    public string Source { get; init; } = "gpx-import";
+    public string Source { get; set; } = "gpx-import";
+
+    /// <summary>模擬紀錄標記為 PC；一般 GPX 匯入沒有這個欄位。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DeviceName { get; set; }
 }
 
 /// <summary>manifest.json 裡的一筆紀錄摘要。</summary>
@@ -99,7 +104,7 @@ public sealed class GpxTrackEntry : ITrackIdentity
 {
     public string TrackId { get; init; } = string.Empty;
 
-    public long StartTimeMs { get; init; }
+    public long StartTimeMs { get; set; }
 
     public double DistanceMeters { get; init; }
 
@@ -120,6 +125,12 @@ public sealed class GpxTrackEntry : ITrackIdentity
     public long PhotoCount { get; init; }
 
     public string File { get; init; } = string.Empty;
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DeviceName { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Source { get; set; }
 }
 
 /// <summary>匯出時只需要從紀錄 JSON 讀出的欄位。</summary>

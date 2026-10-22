@@ -301,7 +301,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        _simulatorWindow = new SimulatorWindow
+        _simulatorWindow = new SimulatorWindow(_tokenStore)
         {
             Owner = this,
         };

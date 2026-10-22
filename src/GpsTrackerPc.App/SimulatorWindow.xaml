@@ -252,6 +252,10 @@
                     Content="直接產生"
                     Margin="8,0,0,0"
                     Click="DirectGenerate_Click" />
+            <Button x:Name="UploadRecordButton"
+                    Content="上傳成紀錄"
+                    Margin="8,0,0,0"
+                    Click="UploadRecord_Click" />
           </WrapPanel>
           <ProgressBar x:Name="PlaybackProgress"
                        Height="8"
