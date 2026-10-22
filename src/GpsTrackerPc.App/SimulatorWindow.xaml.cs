@@ -46,6 +46,9 @@ public partial class SimulatorWindow : Window
     private double _selectedSpeedMultiplier = 1.0;
     private PlaybackController? _playback;
     private PlaybackResult? _lastPlayback;
+    private PlaybackMapStream _mapStream = new();
+    private PlaybackMapFrame? _pendingFullFrame;
+    private bool _mapUpdatesEnabled;
     private int _sentSampleCount;
 
     public SimulatorWindow(TokenStore tokenStore, DeviceNameStore deviceNameStore)
@@ -59,7 +62,10 @@ public partial class SimulatorWindow : Window
         _searchClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         _uploadClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
         _geocoder = new NominatimGeocoder(_searchClient);
-        _playbackTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        _playbackTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(PlaybackMapPolicy.UpdateIntervalMilliseconds),
+        };
         _playbackTimer.Tick += PlaybackTimer_Tick;
 
         _updatingUi = true;
@@ -108,6 +114,7 @@ public partial class SimulatorWindow : Window
             core.NavigationCompleted += Core_NavigationCompleted;
 
             MapView.Source = new Uri($"https://{SimulatorHost}/simulator.html");
+            UpdateMapActivity();
         }
         catch (Exception ex)
         {
@@ -146,6 +153,7 @@ public partial class SimulatorWindow : Window
                     LoadingPanel.Visibility = Visibility.Collapsed;
                     SendRoute();
                     SetPlaybackControlState();
+                    UpdateMapActivity();
                     break;
                 case "center":
                     ReadCenter(root);
@@ -905,6 +913,8 @@ public partial class SimulatorWindow : Window
         controller.Start();
         _playback = controller;
         _lastPlayback = null;
+        _mapStream = new PlaybackMapStream();
+        _pendingFullFrame = null;
         _sentSampleCount = 0;
         PlaybackOutageText.Text = string.Empty;
 
@@ -915,7 +925,12 @@ public partial class SimulatorWindow : Window
             lat = current?.Coordinates.Latitude,
             lon = current?.Coordinates.Longitude,
         });
-        SendNewPlaybackSamples();
+        AppendNewPlaybackSamples();
+        if (_mapUpdatesEnabled)
+        {
+            SendMapFrame(_mapStream.BuildFrame());
+        }
+
         SendPlaybackPosition();
         UpdatePlaybackUi();
         SetPlaybackControlState();
@@ -965,7 +980,13 @@ public partial class SimulatorWindow : Window
         _playbackTimer.Stop();
         _playbackWatch.Reset();
         _lastPlayback = _playback.BuildResult();
-        Post(new { type = "playbackEnd" });
+        AppendNewPlaybackSamples();
+        if (_mapUpdatesEnabled)
+        {
+            SendMapFrame(_mapStream.BuildFrame());
+            Post(new { type = "playbackEnd" });
+        }
+
         UpdatePlaybackUi();
         SetPlaybackControlState();
         SetStatus($"播放已停止，保留 {_lastPlayback.Samples.Count} 個取樣點。");
@@ -1004,7 +1025,13 @@ public partial class SimulatorWindow : Window
             _playback = null;
             _lastPlayback = result;
             _sentSampleCount = 0;
+            _mapStream = new PlaybackMapStream();
+            foreach (var sample in result.Samples)
+            {
+                _mapStream.Append(sample);
+            }
 
+            var frame = _mapStream.BuildFrame(forceReplace: true);
             var first = result.Samples.FirstOrDefault();
             Post(new
             {
@@ -1012,18 +1039,15 @@ public partial class SimulatorWindow : Window
                 lat = first?.Coordinates.Latitude ?? route.Waypoints[0].Coordinates.Latitude,
                 lon = first?.Coordinates.Longitude ?? route.Waypoints[0].Coordinates.Longitude,
             });
-            var samples = result.Samples
-                .Select(sample => new
-                {
-                    lat = sample.Coordinates.Latitude,
-                    lon = sample.Coordinates.Longitude,
-                    elapsed = sample.ElapsedSeconds,
-                    speed = sample.SpeedMetersPerSecond,
-                    outage = sample.IsInOutage,
-                })
-                .ToList();
-            Post(new { type = "playbackBatch", samples });
-            Post(new { type = "playbackEnd" });
+            if (_mapUpdatesEnabled)
+            {
+                SendMapFrame(frame);
+                Post(new { type = "playbackEnd" });
+            }
+            else
+            {
+                _pendingFullFrame = frame;
+            }
 
             PlaybackProgress.Value = 100;
             PlaybackOutageText.Text = string.Empty;
@@ -1075,7 +1099,7 @@ public partial class SimulatorWindow : Window
         window.ShowDialog();
         if (window.Uploaded)
         {
-            SetStatus("模擬紀錄已上傳（裝置 PC、來源 simulated）。");
+            SetStatus($"模擬紀錄已上傳（裝置 {_deviceNameStore.Load()}、來源 simulated）。");
         }
     }
 
@@ -1103,22 +1127,33 @@ public partial class SimulatorWindow : Window
             return;
         }
 
-        SendNewPlaybackSamples();
-        SendPlaybackPosition();
+        AppendNewPlaybackSamples();
+        var completed = _playback.State == PlaybackState.Completed;
+        if (_mapUpdatesEnabled && !completed)
+        {
+            SendMapFrame(_mapStream.BuildFrame());
+            SendPlaybackPosition();
+        }
+
         UpdatePlaybackUi();
 
-        if (_playback.State == PlaybackState.Completed)
+        if (completed)
         {
             _playbackTimer.Stop();
             _playbackWatch.Reset();
             _lastPlayback = _playback.BuildResult();
-            Post(new { type = "playbackEnd" });
+            if (_mapUpdatesEnabled)
+            {
+                SendMapFrame(_mapStream.BuildFrame());
+                Post(new { type = "playbackEnd" });
+            }
+
             SetPlaybackControlState();
             SetStatus($"播放完成：{_lastPlayback.Samples.Count} 個取樣點。");
         }
     }
 
-    private void SendNewPlaybackSamples()
+    private void AppendNewPlaybackSamples()
     {
         if (_playback == null)
         {
@@ -1128,21 +1163,58 @@ public partial class SimulatorWindow : Window
         var samples = _playback.Samples;
         for (; _sentSampleCount < samples.Count; _sentSampleCount++)
         {
-            var sample = samples[_sentSampleCount];
-            Post(new
+            _mapStream.Append(samples[_sentSampleCount]);
+        }
+    }
+
+    private void SendMapFrame(PlaybackMapFrame frame)
+    {
+        if (!_webReady)
+        {
+            return;
+        }
+
+        if (frame.ReplaceAll)
+        {
+            var segments = frame.Segments
+                .Select(segment => segment.Points
+                    .Select(point => new
+                    {
+                        lat = point.Coordinates.Latitude,
+                        lon = point.Coordinates.Longitude,
+                        elapsed = point.ElapsedSeconds,
+                    })
+                    .ToList())
+                .ToList();
+            Post(new { type = "playbackReplace", segments });
+            return;
+        }
+
+        if (frame.Samples.Count == 0)
+        {
+            return;
+        }
+
+        var samples = frame.Samples
+            .Select(sample => new
             {
-                type = "playbackSample",
                 lat = sample.Coordinates.Latitude,
                 lon = sample.Coordinates.Longitude,
                 elapsed = sample.ElapsedSeconds,
                 speed = sample.SpeedMetersPerSecond,
                 outage = sample.IsInOutage,
-            });
-        }
+            })
+            .ToList();
+        Post(new { type = "playbackBatch", samples });
     }
 
     private void SendPlaybackPosition()
     {
+        if (!_mapUpdatesEnabled)
+        {
+            return;
+        }
+
         var current = _playback?.Current;
         if (current == null)
         {
@@ -1212,6 +1284,75 @@ public partial class SimulatorWindow : Window
 
         laps = parsed;
         return true;
+    }
+
+    private void Window_StateChanged(object? sender, EventArgs e) => UpdateMapActivity();
+
+    private void Window_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => UpdateMapActivity();
+
+    private void Window_Activated(object? sender, EventArgs e) => UpdateMapActivity();
+
+    private void Window_Deactivated(object? sender, EventArgs e) => UpdateMapActivity();
+
+    /// <summary>
+    /// 視窗縮小、被其他視窗蓋住或失去焦點時先停止送地圖更新；模擬仍由計時器照常推進。
+    /// 恢復時用一次完整（已抽稀的）畫面補上。
+    /// </summary>
+    private void UpdateMapActivity()
+    {
+        var shouldUpdate = IsVisible &&
+                           WindowState != WindowState.Minimized &&
+                           IsActive;
+
+        if (MapView.CoreWebView2 != null)
+        {
+            MapView.CoreWebView2.MemoryUsageTargetLevel = WindowState == WindowState.Minimized
+                ? CoreWebView2MemoryUsageTargetLevel.Low
+                : CoreWebView2MemoryUsageTargetLevel.Normal;
+        }
+
+        if (!shouldUpdate)
+        {
+            _mapUpdatesEnabled = false;
+            return;
+        }
+
+        if (_mapUpdatesEnabled)
+        {
+            return;
+        }
+
+        _mapUpdatesEnabled = true;
+        ResumeMapUpdates();
+    }
+
+    private void ResumeMapUpdates()
+    {
+        if (!_webReady)
+        {
+            return;
+        }
+
+        if (_pendingFullFrame != null)
+        {
+            SendMapFrame(_pendingFullFrame);
+            _pendingFullFrame = null;
+        }
+        else if (_mapStream.DisplayPointCount > 0)
+        {
+            SendMapFrame(_mapStream.BuildFrame(forceReplace: true));
+        }
+
+        if (_playback != null)
+        {
+            SendPlaybackPosition();
+        }
+
+        if (_lastPlayback != null &&
+            (_playback == null || _playback.State is PlaybackState.Completed or PlaybackState.Stopped))
+        {
+            Post(new { type = "playbackEnd" });
+        }
     }
 
     private void ReadCenter(JsonElement root)

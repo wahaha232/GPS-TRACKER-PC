@@ -10,7 +10,11 @@
         WindowStartupLocation="CenterOwner"
         Background="#0B1220"
         Loaded="Window_Loaded"
-        Closing="Window_Closing">
+        Closing="Window_Closing"
+        StateChanged="Window_StateChanged"
+        IsVisibleChanged="Window_IsVisibleChanged"
+        Activated="Window_Activated"
+        Deactivated="Window_Deactivated">
   <Window.Resources>
     <Style TargetType="TextBlock">
       <Setter Property="Foreground" Value="#E2E8F0" />

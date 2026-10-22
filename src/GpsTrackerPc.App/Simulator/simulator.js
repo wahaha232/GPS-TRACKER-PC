@@ -10,6 +10,9 @@
   var playbackMarker = null;
   var playbackSegments = [];
   var lastPlaybackTime = null;
+  var trailDirty = false;
+  var trailTimer = null;
+  var lastTrailSetDataAt = 0;
 
   function showError(message) {
     mapError.hidden = false;
@@ -46,7 +49,11 @@
       center: [121.564472, 25.033964],
       zoom: 15,
       maxZoom: 20,
-      attributionControl: false
+      attributionControl: false,
+      antialias: false,
+      fadeDuration: 0,
+      pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+      maxTileCacheSize: 120
     });
   } catch (error) {
     showError(error.message);
@@ -123,6 +130,31 @@
     source.setData({ type: "FeatureCollection", features: features });
   }
 
+  // 播放軌跡最多每秒更新一次；其他時間只累積，避免大量 setData 造成 CPU 負擔。
+  function scheduleTrailUpdate() {
+    trailDirty = true;
+    var now = performance.now();
+    var wait = Math.max(0, 1000 - (now - lastTrailSetDataAt));
+    if (wait === 0) {
+      flushTrail();
+      return;
+    }
+
+    if (!trailTimer) {
+      trailTimer = setTimeout(function () {
+        trailTimer = null;
+        flushTrail();
+      }, wait);
+    }
+  }
+
+  function flushTrail() {
+    if (!trailDirty) return;
+    trailDirty = false;
+    lastTrailSetDataAt = performance.now();
+    updatePlaybackSource();
+  }
+
   function showRouteMarkers() {
     markers.forEach(function (item) {
       item.element.style.display = "";
@@ -137,7 +169,7 @@
     playbackSegments = [];
     lastPlaybackTime = null;
     document.getElementById("outageBadge").hidden = true;
-    updatePlaybackSource();
+    scheduleTrailUpdate();
   }
 
   function ensurePlaybackMarker(lat, lon) {
@@ -175,8 +207,36 @@
     }
 
     lastPlaybackTime = message.elapsed;
-    updatePlaybackSource();
+    scheduleTrailUpdate();
     updatePlaybackPosition(message);
+  }
+
+  function replacePlayback(message) {
+    playbackSegments = (message.segments || [])
+      .map(function (segment) {
+        return (segment || [])
+          .filter(function (point) {
+            return Number.isFinite(point.lat) && Number.isFinite(point.lon);
+          })
+          .map(function (point) { return [point.lon, point.lat]; });
+      })
+      .filter(function (segment) { return segment.length > 0; });
+
+    var lastPoint = null;
+    var sourceSegments = message.segments || [];
+    for (var index = sourceSegments.length - 1; index >= 0; index--) {
+      var segment = sourceSegments[index] || [];
+      if (segment.length) {
+        lastPoint = segment[segment.length - 1];
+        break;
+      }
+    }
+
+    lastPlaybackTime = lastPoint && Number.isFinite(lastPoint.elapsed) ? lastPoint.elapsed : null;
+    scheduleTrailUpdate();
+    if (lastPoint) {
+      updatePlaybackPosition(lastPoint);
+    }
   }
 
   function updatePlaybackPosition(message) {
@@ -194,6 +254,7 @@
     if (playbackMarker) {
       playbackMarker.getElement().classList.remove("outage");
     }
+    scheduleTrailUpdate();
   }
 
   function setRoute(message) {
@@ -322,9 +383,9 @@
           break;
         case "playbackBatch":
           (message.samples || []).forEach(appendPlaybackSample);
-          if (message.samples && message.samples.length) {
-            updatePlaybackPosition(message.samples[message.samples.length - 1]);
-          }
+          break;
+        case "playbackReplace":
+          replacePlayback(message);
           break;
         case "playbackPosition":
           updatePlaybackPosition(message);

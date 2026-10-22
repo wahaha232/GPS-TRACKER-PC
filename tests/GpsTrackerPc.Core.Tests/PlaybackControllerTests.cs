@@ -91,6 +91,25 @@ public class PlaybackControllerTests
         TestAssert.Close(direct.DistanceMeters, played.DistanceMeters, 1e-6);
     }
 
+    [Theory]
+    [InlineData(100)]
+    [InlineData(250)]
+    [InlineData(500)]
+    public void DifferentUiTickIntervalsProduceTheSameSamples(int tickMilliseconds)
+    {
+        var route = CreateRoute();
+        var direct = PlaybackController.GenerateDirect(route);
+
+        var realtime = new PlaybackController(route);
+        realtime.Start();
+        while (realtime.State == PlaybackState.Playing)
+        {
+            realtime.Advance(TimeSpan.FromMilliseconds(tickMilliseconds));
+        }
+
+        AssertSamplesEqual(direct.Samples, realtime.BuildResult().Samples);
+    }
+
     [Fact]
     public void DirectGenerationMatchesRealtimeWithOutage()
     {

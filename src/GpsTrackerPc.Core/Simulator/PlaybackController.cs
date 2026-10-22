@@ -203,7 +203,7 @@ public sealed class PlaybackController
     public PlaybackResult BuildResult() =>
         new(
             _route,
-            _samples.ToList(),
+            _samples.AsReadOnly(),
             ElapsedSeconds,
             _distanceMeters,
             State == PlaybackState.Completed,
