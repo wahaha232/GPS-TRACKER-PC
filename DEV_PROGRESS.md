@@ -16,7 +16,7 @@
 | 3 | GPX 批次匯出、批次匯入（多選、拖放、進度） | 4% | 完成 |
 | 4 | App 自動更新＋GitHub Actions 建置發佈（Release tag gpstracker-desktop-latest） | 4% | 未開始 |
 | 5 | 模擬引擎從 gps-locator-tw 移植成 C#（RouteSimulator、GpxStreamImporter、RandomRouteGenerator、GeoMath）＋單元測試 | 6% | 完成 |
-| 6 | 路線編輯與播放畫面（地圖點選、地點搜尋、收藏、隨機路線、暫停／倍速／進度列） | 9% | 進行中（6A 完成） |
+| 6 | 路線編輯與播放畫面（地圖點選、地點搜尋、收藏、隨機路線、暫停／倍速／進度列） | 9% | 完成 |
 | 7 | 模擬結果轉成紀錄、以裝置「PC」上傳、標 source: "simulated"、處理網站預設裝置 | 4% | 未開始 |
 | 8 | 整合測試、打包、修錯 | 6% | 未開始 |
 
@@ -29,4 +29,5 @@
 - 2026-10-22｜Kilo｜完成第 2 階段：新增 `GpsTrackerPc.Core`（GitHub data/ 增量同步、ETag 條件式請求、原子寫檔、失敗保留舊檔；TokenStore + DPAPI CurrentUser）與 `GpsTrackerPc.Core.Tests`；WebView2 增加 `gpstracker-data.local` 虛擬主機並注入 `GPST.resolveConfig` 改寫，網頁 `data/` 直接讀 `%LOCALAPPDATA%\GpsTrackerPc\data`，未修改 gpstracker-web；主視窗加入同步狀態／立即同步，設定視窗可儲存／刪除 Token 且不顯示內容；實際啟動驗證首次同步 29 個檔案、第二次同步全部跳過、Token 檔案無明文｜測試 73/73 通過（Core 16、Simulation 57），`dotnet build` 0 警告 0 錯誤｜下一步：第 3 階段 GPX 批次匯出／匯入
 - 2026-10-22｜Kilo｜完成第 3 階段：新增 `GpsTrackerPc.Core.Gpx`（GpxTrackBuilder 移植 gt-gpx.js、GpxExporter 採 records.js downloadGpx 格式、GitHubRecordUploader、GpxImportBatch）；App 新增 GPX 匯出視窗（勾選多筆、選資料夾、進度）與匯入視窗（多選／拖放、摘要、移動方式、公開倉庫警告、Token 檢查、依序上傳）；所有 GitHub 寫入測試都用假 HttpMessageHandler，沒有實際上傳｜測試 96/96 通過（Core 39、Simulation 57），`dotnet build` 0 警告 0 錯誤｜下一步：第 4 階段自動更新（開工前先確認 GitHub Actions／Release 要放在哪個 repo）
 - 2026-10-22｜Kilo｜完成第 6 階段 A：新增 SimulatorWindow（MapLibre 衛星底圖、C#↔地圖 postMessage、點選／拖曳／刪除／排序／停留、速度、循環／自然起伏／GPX 時間、GPS 中斷、Nominatim 搜尋＋每秒一次限制、收藏、隨機路線、GPX／KML 匯入匯出、RouteJsonCodec 多路線存檔）與 SavedRoutesWindow；實際開過模擬視窗、地圖載入、新增 2 點、儲存路線、收藏、已存路線視窗、30 點隨機路線與新增中斷｜測試 122/122 通過（Core 65、Simulation 57），`dotnet build` 0 警告 0 錯誤｜下一步：第 6 階段 B 播放畫面（暫停／倍速／進度列）
+- 2026-10-22｜Kilo｜完成第 6 階段 B：新增可注入時間的 `PlaybackController`（即時播放、暫停／繼續／停止、1/2/4/8 倍速、每秒取樣、中斷不取樣、直接產生、循環圈數）與 `PlaybackSample`／`PlaybackResult`；SimulatorWindow 加入播放控制、進度／時間／速度／距離、GPS 中斷提示；地圖加入播放標記、走過軌跡與中斷樣式；結果只存在記憶體，沒有上傳或轉成網站格式。實際開過播放視窗：開始／暫停／繼續／停止、中斷提示、直接產生 15 個取樣點與地圖軌跡｜測試 130/130 通過（Core 73、Simulation 57），`dotnet build` 0 警告 0 錯誤｜下一步：第 7 階段模擬結果轉成紀錄（先確認網站預設裝置要不要排除 PC）
 

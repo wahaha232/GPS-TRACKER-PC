@@ -116,11 +116,12 @@
           <TextBlock Text="模擬路線編輯"
                      FontSize="20"
                      FontWeight="SemiBold" />
-          <TextBlock Text="6A：編輯與儲存路線；播放會在 6B 加入。"
+          <TextBlock Text="6A／6B：編輯、儲存、即時播放與直接產生。"
                      Foreground="#94A3B8"
                      FontSize="12"
                      Margin="0,4,0,0" />
 
+          <StackPanel x:Name="RouteEditPanel">
           <TextBlock Text="路線名稱" Style="{StaticResource Section}" />
           <TextBox x:Name="RouteNameBox" TextChanged="RouteNameBox_TextChanged" />
           <WrapPanel Margin="0,6,0,0">
@@ -224,6 +225,51 @@
                   HorizontalAlignment="Left"
                   Margin="0,6,0,0"
                   Click="GenerateRandom_Click" />
+          </StackPanel>
+
+          <Separator />
+          <TextBlock Text="模擬播放" Style="{StaticResource Section}" />
+          <WrapPanel>
+            <Button x:Name="StartPlaybackButton" Content="開始" Margin="0,0,6,6" Click="StartPlayback_Click" />
+            <Button x:Name="PausePlaybackButton" Content="暫停" Margin="0,0,6,6" Click="PausePlayback_Click" />
+            <Button x:Name="ResumePlaybackButton" Content="繼續" Margin="0,0,6,6" Click="ResumePlayback_Click" />
+            <Button x:Name="StopPlaybackButton" Content="停止" Margin="0,0,6,6" Click="StopPlayback_Click" />
+          </WrapPanel>
+          <WrapPanel Margin="0,2,0,0">
+            <TextBlock Text="倍速" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <ComboBox x:Name="PlaybackSpeedBox"
+                      Width="70"
+                      SelectedIndex="0"
+                      SelectionChanged="PlaybackSpeed_Changed">
+              <ComboBoxItem Content="1x" Tag="1" />
+              <ComboBoxItem Content="2x" Tag="2" />
+              <ComboBoxItem Content="4x" Tag="4" />
+              <ComboBoxItem Content="8x" Tag="8" />
+            </ComboBox>
+            <TextBlock Text="圈數" VerticalAlignment="Center" Margin="12,0,6,0" />
+            <TextBox x:Name="LapsBox" Width="50" Text="1" />
+            <Button x:Name="DirectGenerateButton"
+                    Content="直接產生"
+                    Margin="8,0,0,0"
+                    Click="DirectGenerate_Click" />
+          </WrapPanel>
+          <ProgressBar x:Name="PlaybackProgress"
+                       Height="8"
+                       Minimum="0"
+                       Maximum="100"
+                       Value="0"
+                       Margin="0,8,0,0"
+                       Background="#1E293B"
+                       Foreground="#22C55E" />
+          <TextBlock x:Name="PlaybackOutageText"
+                     Foreground="#FCA5A5"
+                     FontSize="12"
+                     Margin="0,6,0,0" />
+          <TextBlock x:Name="PlaybackMetaText"
+                     Foreground="#94A3B8"
+                     FontSize="12"
+                     Margin="0,4,0,0"
+                     TextWrapping="Wrap" />
 
           <Separator />
           <TextBlock Text="路線檔" Style="{StaticResource Section}" />

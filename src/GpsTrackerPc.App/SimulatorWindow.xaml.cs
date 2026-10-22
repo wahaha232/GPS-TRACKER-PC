@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net.Http;
@@ -5,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using GpsTrackerPc.App.Infrastructure;
 using GpsTrackerPc.Core.Simulator;
 using GpsTrackerPc.Simulation.Model;
@@ -15,8 +17,8 @@ using Microsoft.Win32;
 namespace GpsTrackerPc.App;
 
 /// <summary>
-/// 6A 路線編輯視窗。地圖（simulator.html）只負責顯示與送出點選事件；
-/// 路線的實際資料、順序、停留、速度與中斷都由 C# 的 RouteEditorModel 管理。
+/// 6A／6B 路線編輯與模擬播放視窗。地圖（simulator.html）只負責顯示與送出事件；
+/// 路線與播放結果的實際資料都由 C# 管理，地圖只畫出 C# 傳過去的內容。
 /// </summary>
 public partial class SimulatorWindow : Window
 {
@@ -28,12 +30,19 @@ public partial class SimulatorWindow : Window
     private readonly HttpClient _searchClient;
     private readonly NominatimGeocoder _geocoder;
     private readonly CancellationTokenSource _lifetime = new();
+    private readonly DispatcherTimer _playbackTimer;
+    private readonly Stopwatch _playbackWatch = new();
 
     private bool _webReady;
     private bool _updatingUi;
+    private bool _directGenerating;
     private string? _selectedWaypointId;
     private double _mapCenterLat = Coordinates.Default.Latitude;
     private double _mapCenterLon = Coordinates.Default.Longitude;
+    private double _selectedSpeedMultiplier = 1.0;
+    private PlaybackController? _playback;
+    private PlaybackResult? _lastPlayback;
+    private int _sentSampleCount;
 
     public SimulatorWindow()
     {
@@ -43,6 +52,8 @@ public partial class SimulatorWindow : Window
         _library = new RouteLibraryStore(AppPaths.RoutesDirectory);
         _searchClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         _geocoder = new NominatimGeocoder(_searchClient);
+        _playbackTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        _playbackTimer.Tick += PlaybackTimer_Tick;
 
         _updatingUi = true;
         RouteNameBox.Text = _route.Name;
@@ -50,7 +61,11 @@ public partial class SimulatorWindow : Window
 
         RefreshAllUi(updateName: false);
         RefreshFavorites();
+        SetPlaybackControlState();
     }
+
+    /// <summary>給第 7 階段使用的最近一次播放／直接產生結果。</summary>
+    public PlaybackResult? LastPlaybackResult => _lastPlayback;
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
@@ -123,6 +138,7 @@ public partial class SimulatorWindow : Window
                     ReadCenter(root);
                     LoadingPanel.Visibility = Visibility.Collapsed;
                     SendRoute();
+                    SetPlaybackControlState();
                     break;
                 case "center":
                     ReadCenter(root);
@@ -208,6 +224,7 @@ public partial class SimulatorWindow : Window
         RefreshTimingControls();
         RefreshWaypointList(_selectedWaypointId);
         RefreshOutageList();
+        SetPlaybackControlState();
     }
 
     private void RefreshTimingControls()
@@ -288,6 +305,11 @@ public partial class SimulatorWindow : Window
 
     private void SendRoute()
     {
+        if (_playback == null || _playback.State is PlaybackState.Stopped or PlaybackState.Completed)
+        {
+            _lastPlayback = null;
+        }
+
         if (!_webReady)
         {
             return;
@@ -362,6 +384,7 @@ public partial class SimulatorWindow : Window
         }
 
         RefreshTimingControls();
+        SetPlaybackControlState();
         SendRoute();
     }
 
@@ -820,6 +843,334 @@ public partial class SimulatorWindow : Window
         }
     }
 
+    private void PlaybackSpeed_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (PlaybackSpeedBox.SelectedItem is not ComboBoxItem item ||
+            !double.TryParse(
+                item.Tag?.ToString(),
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var multiplier))
+        {
+            return;
+        }
+
+        _selectedSpeedMultiplier = multiplier;
+        if (_playback != null)
+        {
+            try
+            {
+                _playback.SetSpeedMultiplier(multiplier);
+            }
+            catch (ArgumentException ex)
+            {
+                SetStatus(ex.Message);
+            }
+        }
+    }
+
+    private void StartPlayback_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_webReady || _directGenerating || _playback?.State is PlaybackState.Playing or PlaybackState.Paused)
+        {
+            return;
+        }
+
+        SimulationRoute route;
+        try
+        {
+            route = _route.ToRoute();
+        }
+        catch (Exception ex)
+        {
+            SetStatus("無法播放：" + ex.Message);
+            return;
+        }
+
+        if (!TryReadLaps(route, out var laps))
+        {
+            return;
+        }
+
+        var controller = new PlaybackController(route, laps);
+        controller.SetSpeedMultiplier(_selectedSpeedMultiplier);
+        controller.Start();
+        _playback = controller;
+        _lastPlayback = null;
+        _sentSampleCount = 0;
+        PlaybackOutageText.Text = string.Empty;
+
+        var current = controller.Current;
+        Post(new
+        {
+            type = "playbackReset",
+            lat = current?.Coordinates.Latitude,
+            lon = current?.Coordinates.Longitude,
+        });
+        SendNewPlaybackSamples();
+        SendPlaybackPosition();
+        UpdatePlaybackUi();
+        SetPlaybackControlState();
+
+        _playbackWatch.Restart();
+        _playbackTimer.Start();
+        SetStatus("播放開始。");
+    }
+
+    private void PausePlayback_Click(object sender, RoutedEventArgs e)
+    {
+        if (_playback?.State != PlaybackState.Playing)
+        {
+            return;
+        }
+
+        _playback.Pause();
+        _playbackTimer.Stop();
+        _playbackWatch.Reset();
+        UpdatePlaybackUi();
+        SetPlaybackControlState();
+        SetStatus("播放已暫停。");
+    }
+
+    private void ResumePlayback_Click(object sender, RoutedEventArgs e)
+    {
+        if (_playback?.State != PlaybackState.Paused)
+        {
+            return;
+        }
+
+        _playback.Resume();
+        _playbackWatch.Restart();
+        _playbackTimer.Start();
+        SetPlaybackControlState();
+        SetStatus("繼續播放。");
+    }
+
+    private void StopPlayback_Click(object sender, RoutedEventArgs e)
+    {
+        if (_playback == null || _playback.State is not (PlaybackState.Playing or PlaybackState.Paused))
+        {
+            return;
+        }
+
+        _playback.Stop();
+        _playbackTimer.Stop();
+        _playbackWatch.Reset();
+        _lastPlayback = _playback.BuildResult();
+        Post(new { type = "playbackEnd" });
+        UpdatePlaybackUi();
+        SetPlaybackControlState();
+        SetStatus($"播放已停止，保留 {_lastPlayback.Samples.Count} 個取樣點。");
+    }
+
+    private async void DirectGenerate_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_webReady || _directGenerating || _playback?.State is PlaybackState.Playing or PlaybackState.Paused)
+        {
+            return;
+        }
+
+        SimulationRoute route;
+        try
+        {
+            route = _route.ToRoute();
+        }
+        catch (Exception ex)
+        {
+            SetStatus("無法產生：" + ex.Message);
+            return;
+        }
+
+        if (!TryReadLaps(route, out var laps))
+        {
+            return;
+        }
+
+        _directGenerating = true;
+        SetPlaybackControlState();
+        SetStatus("正在直接產生完整路線…");
+
+        try
+        {
+            var result = await Task.Run(() => PlaybackController.GenerateDirect(route, laps));
+            _playback = null;
+            _lastPlayback = result;
+            _sentSampleCount = 0;
+
+            var first = result.Samples.FirstOrDefault();
+            Post(new
+            {
+                type = "playbackReset",
+                lat = first?.Coordinates.Latitude ?? route.Waypoints[0].Coordinates.Latitude,
+                lon = first?.Coordinates.Longitude ?? route.Waypoints[0].Coordinates.Longitude,
+            });
+            var samples = result.Samples
+                .Select(sample => new
+                {
+                    lat = sample.Coordinates.Latitude,
+                    lon = sample.Coordinates.Longitude,
+                    elapsed = sample.ElapsedSeconds,
+                    speed = sample.SpeedMetersPerSecond,
+                    outage = sample.IsInOutage,
+                })
+                .ToList();
+            Post(new { type = "playbackBatch", samples });
+            Post(new { type = "playbackEnd" });
+
+            PlaybackProgress.Value = 100;
+            PlaybackOutageText.Text = string.Empty;
+            PlaybackMetaText.Text = result.Samples.Count == 0
+                ? "沒有取樣點（整段可能都在 GPS 中斷）"
+                : $"已過 {FormatClock((long)Math.Floor(result.ElapsedSeconds))}｜" +
+                  $"終點速度 {(result.Samples[^1].SpeedMetersPerSecond * 3.6).ToString("0.0", CultureInfo.InvariantCulture)} km/h｜" +
+                  $"已走 {(result.DistanceMeters / 1000.0).ToString("0.00", CultureInfo.InvariantCulture)} km";
+            SetStatus($"直接產生完成：{result.Samples.Count} 個取樣點。");
+        }
+        catch (Exception ex)
+        {
+            SetStatus("直接產生失敗：" + ex.Message);
+        }
+        finally
+        {
+            _directGenerating = false;
+            SetPlaybackControlState();
+        }
+    }
+
+    private void PlaybackTimer_Tick(object? sender, EventArgs e)
+    {
+        if (_playback?.State != PlaybackState.Playing)
+        {
+            return;
+        }
+
+        var elapsed = _playbackWatch.Elapsed;
+        _playbackWatch.Restart();
+        try
+        {
+            _playback.Advance(elapsed);
+        }
+        catch (Exception ex)
+        {
+            _playbackTimer.Stop();
+            _playbackWatch.Reset();
+            _playback.Stop();
+            _lastPlayback = _playback.BuildResult();
+            SetPlaybackControlState();
+            SetStatus("播放失敗：" + ex.Message);
+            return;
+        }
+
+        SendNewPlaybackSamples();
+        SendPlaybackPosition();
+        UpdatePlaybackUi();
+
+        if (_playback.State == PlaybackState.Completed)
+        {
+            _playbackTimer.Stop();
+            _playbackWatch.Reset();
+            _lastPlayback = _playback.BuildResult();
+            Post(new { type = "playbackEnd" });
+            SetPlaybackControlState();
+            SetStatus($"播放完成：{_lastPlayback.Samples.Count} 個取樣點。");
+        }
+    }
+
+    private void SendNewPlaybackSamples()
+    {
+        if (_playback == null)
+        {
+            return;
+        }
+
+        var samples = _playback.Samples;
+        for (; _sentSampleCount < samples.Count; _sentSampleCount++)
+        {
+            var sample = samples[_sentSampleCount];
+            Post(new
+            {
+                type = "playbackSample",
+                lat = sample.Coordinates.Latitude,
+                lon = sample.Coordinates.Longitude,
+                elapsed = sample.ElapsedSeconds,
+                speed = sample.SpeedMetersPerSecond,
+                outage = sample.IsInOutage,
+            });
+        }
+    }
+
+    private void SendPlaybackPosition()
+    {
+        var current = _playback?.Current;
+        if (current == null)
+        {
+            return;
+        }
+
+        Post(new
+        {
+            type = "playbackPosition",
+            lat = current.Coordinates.Latitude,
+            lon = current.Coordinates.Longitude,
+            outage = _playback!.IsInOutage,
+        });
+    }
+
+    private void UpdatePlaybackUi()
+    {
+        if (_playback?.Current == null)
+        {
+            return;
+        }
+
+        var current = _playback.Current;
+        PlaybackProgress.Value = Math.Clamp(_playback.Progress * 100.0, 0.0, 100.0);
+        PlaybackMetaText.Text =
+            $"已過 {FormatClock((long)Math.Floor(current.ElapsedSeconds))}｜" +
+            $"目前 {(current.SpeedMetersPerSecond * 3.6).ToString("0.0", CultureInfo.InvariantCulture)} km/h｜" +
+            $"已走 {(_playback.DistanceMeters / 1000.0).ToString("0.00", CultureInfo.InvariantCulture)} km";
+        PlaybackOutageText.Text = _playback.IsInOutage
+            ? "GPS 中斷中（不記錄位置）"
+            : string.Empty;
+    }
+
+    private void SetPlaybackControlState()
+    {
+        var active = _playback?.State is PlaybackState.Playing or PlaybackState.Paused;
+        RouteEditPanel.IsEnabled = !active && !_directGenerating;
+        StartPlaybackButton.IsEnabled = !active && !_directGenerating && _webReady;
+        DirectGenerateButton.IsEnabled = !active && !_directGenerating && _webReady;
+        PausePlaybackButton.IsEnabled = _playback?.State == PlaybackState.Playing;
+        ResumePlaybackButton.IsEnabled = _playback?.State == PlaybackState.Paused;
+        StopPlaybackButton.IsEnabled = active;
+        LapsBox.IsEnabled = !active && !_directGenerating && _route.Loop;
+        PlaybackSpeedBox.IsEnabled = !_directGenerating;
+    }
+
+    private bool TryReadLaps(SimulationRoute route, out int laps)
+    {
+        laps = 1;
+        if (!route.Loop)
+        {
+            return true;
+        }
+
+        if (!int.TryParse(
+                LapsBox.Text.Trim(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var parsed) ||
+            parsed < 1 ||
+            parsed > 10_000)
+        {
+            SetStatus("循環路線的圈數必須是 1 到 10000 的整數。");
+            return false;
+        }
+
+        laps = parsed;
+        return true;
+    }
+
     private void ReadCenter(JsonElement root)
     {
         var lat = GetDouble(root, "lat");
@@ -878,6 +1229,9 @@ public partial class SimulatorWindow : Window
 
     private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        _playbackTimer.Stop();
+        _playbackWatch.Reset();
+        _playback?.Stop();
         _lifetime.Cancel();
         _searchClient.Dispose();
         MapView.Dispose();

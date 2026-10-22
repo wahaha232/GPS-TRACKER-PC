@@ -6,6 +6,10 @@
   var routePoints = [];
   var markers = [];
   var selectedId = null;
+  var playbackActive = false;
+  var playbackMarker = null;
+  var playbackSegments = [];
+  var lastPlaybackTime = null;
 
   function showError(message) {
     mapError.hidden = false;
@@ -48,6 +52,8 @@
     showError(error.message);
     return;
   }
+
+  window.__simMap = map;
 
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
   map.addControl(new maplibregl.AttributionControl({ compact: false }), "bottom-right");
@@ -102,7 +108,97 @@
     updateMarkerSelection();
   }
 
+  function updatePlaybackSource() {
+    var source = map.getSource("playback");
+    if (!source) return;
+    var features = playbackSegments
+      .filter(function (segment) { return segment.length >= 2; })
+      .map(function (segment) {
+        return {
+          type: "Feature",
+          properties: {},
+          geometry: { type: "LineString", coordinates: segment }
+        };
+      });
+    source.setData({ type: "FeatureCollection", features: features });
+  }
+
+  function showRouteMarkers() {
+    markers.forEach(function (item) {
+      item.element.style.display = "";
+    });
+  }
+
+  function clearPlayback() {
+    if (playbackMarker) {
+      playbackMarker.remove();
+      playbackMarker = null;
+    }
+    playbackSegments = [];
+    lastPlaybackTime = null;
+    document.getElementById("outageBadge").hidden = true;
+    updatePlaybackSource();
+  }
+
+  function ensurePlaybackMarker(lat, lon) {
+    if (!playbackMarker) {
+      var element = document.createElement("div");
+      element.className = "playback-marker";
+      playbackMarker = new maplibregl.Marker({ element: element, anchor: "center" })
+        .setLngLat([lon, lat])
+        .addTo(map);
+    } else if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      playbackMarker.setLngLat([lon, lat]);
+    }
+    return playbackMarker;
+  }
+
+  function startPlaybackView(message) {
+    clearPlayback();
+    playbackActive = true;
+    markers.forEach(function (item) {
+      item.element.style.display = "none";
+    });
+    if (Number.isFinite(message.lat) && Number.isFinite(message.lon)) {
+      ensurePlaybackMarker(message.lat, message.lon);
+    }
+  }
+
+  function appendPlaybackSample(message) {
+    if (!Number.isFinite(message.lat) || !Number.isFinite(message.lon)) return;
+    var point = [message.lon, message.lat];
+
+    if (lastPlaybackTime === null || message.elapsed - lastPlaybackTime > 1.5) {
+      playbackSegments.push([point]);
+    } else {
+      playbackSegments[playbackSegments.length - 1].push(point);
+    }
+
+    lastPlaybackTime = message.elapsed;
+    updatePlaybackSource();
+    updatePlaybackPosition(message);
+  }
+
+  function updatePlaybackPosition(message) {
+    if (!Number.isFinite(message.lat) || !Number.isFinite(message.lon)) return;
+    var marker = ensurePlaybackMarker(message.lat, message.lon);
+    var element = marker.getElement();
+    element.classList.toggle("outage", !!message.outage);
+    document.getElementById("outageBadge").hidden = !message.outage;
+  }
+
+  function endPlaybackView() {
+    playbackActive = false;
+    showRouteMarkers();
+    document.getElementById("outageBadge").hidden = true;
+    if (playbackMarker) {
+      playbackMarker.getElement().classList.remove("outage");
+    }
+  }
+
   function setRoute(message) {
+    clearPlayback();
+    playbackActive = false;
     routePoints = message.points || [];
     if (Object.prototype.hasOwnProperty.call(message, "selectedId")) {
       selectedId = message.selectedId;
@@ -165,7 +261,17 @@
       paint: { "line-color": "#38bdf8", "line-width": 4 }
     });
 
+    map.addSource("playback", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+    map.addLayer({
+      id: "playback-line",
+      type: "line",
+      source: "playback",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": "#22c55e", "line-width": 5, "line-opacity": 0.95 }
+    });
+
     map.on("click", function (event) {
+      if (playbackActive) return;
       post("mapClick", { lat: event.lngLat.lat, lon: event.lngLat.lng });
     });
 
@@ -207,6 +313,24 @@
         case "selectMarker":
           selectedId = message.id;
           updateMarkerSelection();
+          break;
+        case "playbackReset":
+          startPlaybackView(message);
+          break;
+        case "playbackSample":
+          appendPlaybackSample(message);
+          break;
+        case "playbackBatch":
+          (message.samples || []).forEach(appendPlaybackSample);
+          if (message.samples && message.samples.length) {
+            updatePlaybackPosition(message.samples[message.samples.length - 1]);
+          }
+          break;
+        case "playbackPosition":
+          updatePlaybackPosition(message);
+          break;
+        case "playbackEnd":
+          endPlaybackView();
           break;
         default:
           break;
