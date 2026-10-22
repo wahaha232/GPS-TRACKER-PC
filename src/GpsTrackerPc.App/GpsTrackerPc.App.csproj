@@ -29,4 +29,24 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 模擬視窗自己的地圖頁；MapLibre 使用 gpstracker-web\vendor 的同一份檔案。 -->
+    <None Update="Simulator\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+  <Target Name="CopyMapLibreForSimulator" AfterTargets="Build">
+    <Copy SourceFiles="$(WebSourceRoot)vendor\maplibre-gl.js;$(WebSourceRoot)vendor\maplibre-gl.css"
+          DestinationFolder="$(OutDir)Simulator\vendor"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyMapLibreForSimulatorPublish" AfterTargets="Publish">
+    <Copy SourceFiles="$(WebSourceRoot)vendor\maplibre-gl.js;$(WebSourceRoot)vendor\maplibre-gl.css"
+          DestinationFolder="$(PublishDir)Simulator\vendor"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

@@ -58,6 +58,7 @@ public partial class MainWindow : Window
     private bool _navigationStarted;
     private bool _pendingReload;
     private bool _syncRunning;
+    private SimulatorWindow? _simulatorWindow;
 
     public MainWindow()
     {
@@ -290,6 +291,22 @@ public partial class MainWindow : Window
             // 上傳後重新下載 manifest／新紀錄，讓本機資料與網站一致。
             await RunSyncAsync(automatic: false);
         }
+    }
+
+    private void Simulator_Click(object sender, RoutedEventArgs e)
+    {
+        if (_simulatorWindow is { IsVisible: true })
+        {
+            _simulatorWindow.Activate();
+            return;
+        }
+
+        _simulatorWindow = new SimulatorWindow
+        {
+            Owner = this,
+        };
+        _simulatorWindow.Closed += (_, _) => _simulatorWindow = null;
+        _simulatorWindow.Show();
     }
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e) => OpenSettings();

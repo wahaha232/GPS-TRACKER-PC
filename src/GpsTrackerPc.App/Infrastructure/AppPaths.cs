@@ -14,4 +14,8 @@ internal static class AppPaths
     public static string GitHubTokenFile => Path.Combine(Root, "github-token.bin");
 
     public static string SyncCacheFile => Path.Combine(Root, "sync-cache.json");
+
+    public static string FavoritesFile => Path.Combine(Root, "favorites.json");
+
+    public static string RoutesDirectory => Path.Combine(Root, "routes");
 }
