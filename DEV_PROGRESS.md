@@ -15,7 +15,7 @@
 | 2 | 從 GitHub 同步 data/ 到本機、GitHub Token 以 DPAPI 加密保存 | 3% | 未開始 |
 | 3 | GPX 批次匯出、批次匯入（多選、拖放、進度） | 4% | 未開始 |
 | 4 | App 自動更新＋GitHub Actions 建置發佈（Release tag gpstracker-desktop-latest） | 4% | 未開始 |
-| 5 | 模擬引擎從 gps-locator-tw 移植成 C#（RouteSimulator、GpxStreamImporter、RandomRouteGenerator、GeoMath）＋單元測試 | 6% | 未開始 |
+| 5 | 模擬引擎從 gps-locator-tw 移植成 C#（RouteSimulator、GpxStreamImporter、RandomRouteGenerator、GeoMath）＋單元測試 | 6% | 完成 |
 | 6 | 路線編輯與播放畫面（地圖點選、地點搜尋、收藏、隨機路線、暫停／倍速／進度列） | 9% | 未開始 |
 | 7 | 模擬結果轉成紀錄、以裝置「PC」上傳、標 source: "simulated"、處理網站預設裝置 | 4% | 未開始 |
 | 8 | 整合測試、打包、修錯 | 6% | 未開始 |
@@ -24,4 +24,5 @@
 
 ## 每日紀錄
 
-（每天結束時在這裡加一行：日期、做了什麼、耗用週額度、下一步）
+- 2026-10-22｜Kilo｜依指示先做第 5 階段：把 GeoMath、SimulationRoute／RouteSimulator、GpxStreamImporter、LocationDocumentCodec、RandomRouteGenerator、SampleRouteFactory、RouteJsonCodec（原在 RouteRepository.kt，改用 System.Text.Json）移植到 `GpsTrackerPc.Simulation`，57 個 xUnit 測試全部通過｜測試 57/57 通過｜下一步：第 1 階段 WPF + WebView2 外殼
+
