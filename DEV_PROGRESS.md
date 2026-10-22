@@ -14,7 +14,7 @@
 | 1 | WPF (.NET 9) + WebView2 外殼、載入本機 gpstracker-web、功能開關（藏拍照／步數／分享） | 4% | 完成 |
 | 2 | 從 GitHub 同步 data/ 到本機、GitHub Token 以 DPAPI 加密保存 | 3% | 完成 |
 | 3 | GPX 批次匯出、批次匯入（多選、拖放、進度） | 4% | 完成 |
-| 4 | App 自動更新＋GitHub Actions 建置發佈（Release tag gpstracker-desktop-latest） | 4% | 未開始 |
+| 4 | App 自動更新＋GitHub Actions 建置發佈（Release tag gpstracker-desktop-latest） | 4% | 完成 |
 | 5 | 模擬引擎從 gps-locator-tw 移植成 C#（RouteSimulator、GpxStreamImporter、RandomRouteGenerator、GeoMath）＋單元測試 | 6% | 完成 |
 | 6 | 路線編輯與播放畫面（地圖點選、地點搜尋、收藏、隨機路線、暫停／倍速／進度列） | 9% | 完成 |
 | 7 | 模擬結果轉成紀錄、以裝置「PC」上傳、標 source: "simulated"、處理網站預設裝置 | 4% | 完成 |
@@ -31,4 +31,5 @@
 - 2026-10-22｜Kilo｜完成第 6 階段 A：新增 SimulatorWindow（MapLibre 衛星底圖、C#↔地圖 postMessage、點選／拖曳／刪除／排序／停留、速度、循環／自然起伏／GPX 時間、GPS 中斷、Nominatim 搜尋＋每秒一次限制、收藏、隨機路線、GPX／KML 匯入匯出、RouteJsonCodec 多路線存檔）與 SavedRoutesWindow；實際開過模擬視窗、地圖載入、新增 2 點、儲存路線、收藏、已存路線視窗、30 點隨機路線與新增中斷｜測試 122/122 通過（Core 65、Simulation 57），`dotnet build` 0 警告 0 錯誤｜下一步：第 6 階段 B 播放畫面（暫停／倍速／進度列）
 - 2026-10-22｜Kilo｜完成第 6 階段 B：新增可注入時間的 `PlaybackController`（即時播放、暫停／繼續／停止、1/2/4/8 倍速、每秒取樣、中斷不取樣、直接產生、循環圈數）與 `PlaybackSample`／`PlaybackResult`；SimulatorWindow 加入播放控制、進度／時間／速度／距離、GPS 中斷提示；地圖加入播放標記、走過軌跡與中斷樣式；結果只存在記憶體，沒有上傳或轉成網站格式。實際開過播放視窗：開始／暫停／繼續／停止、中斷提示、直接產生 15 個取樣點與地圖軌跡｜測試 130/130 通過（Core 73、Simulation 57），`dotnet build` 0 警告 0 錯誤｜下一步：第 7 階段模擬結果轉成紀錄（先確認網站預設裝置要不要排除 PC）
 - 2026-10-22｜Kilo｜完成第 7 階段：新增 `SimulatedRecordBuilder`（取樣→GpxTrackBuilder；排除中斷點、deviceName PC、source simulated、可選開始時間）與 `SimulatedUploadWindow`（摘要／時間／公開倉庫警告，沿用 GitHubRecordUploader）；網站 `chooseDevice` 改成沒指定時排除 PC、只有 PC 才退回 PC，新增 `tests/device.test.js` 並重算雜湊。實際開過上傳對話框，確認摘要（日期、距離、時間、點數、PC、simulated）與開始時間；沒有按下確認上傳｜PC 測試 135/135 通過（Core 78、Simulation 57），`dotnet build` 0 警告 0 錯誤；網站測試 94/95 通過，唯一失敗是既有 `實際軌跡檔：分段與移動時間合理` 資料問題｜下一步：第 8 階段整合打包
+- 2026-10-22｜Kilo｜完成第 4 階段：新增 `UpdateVersion`／`UpdateService`／`UpdateInstaller`（版本比較、GitHub Release 查詢、下載網址白名單、SHA-256、EXE 替換與失敗還原、啟動清理 .old）；App 啟動檢查一次、設定畫面「檢查更新」、下載後詢問才重啟；新增 `.github/workflows/desktop-release.yml`（windows-latest、測試、單一 EXE、SHA-256、Release tag `gpstracker-desktop-latest`）與 csproj Version 0.1.0；本機 `dotnet publish` 已產出單一 EXE（含網頁／模擬資源），但沒有啟動 App｜測試 152/152 通過（Core 95、Simulation 57），`dotnet build` 0 警告 0 錯誤｜下一步：第 8 階段整合打包（workflow 尚未在 GitHub Actions 實際跑過）
 

@@ -1,0 +1,87 @@
+name: Desktop release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      # App 專案會把這個資料夾複製到輸出與 ZIP 裡。
+      WebSourceRoot: ${{ github.workspace }}\gpstracker-web\
+
+    steps:
+      - name: Checkout PC repo
+        uses: actions/checkout@v4
+
+      - name: Checkout gpstracker-web
+        uses: actions/checkout@v4
+        with:
+          repository: wahaha232/ANDROID-APP-DEV
+          path: gpstracker-web
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Test
+        run: dotnet test GpsTrackerPc.sln -c Release --nologo
+
+      - name: Publish Windows x64
+        run: >
+          dotnet publish src/GpsTrackerPc.App/GpsTrackerPc.App.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeAllContentForSelfExtract=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          -o publish
+
+      - name: Package and checksum
+        shell: pwsh
+        run: |
+          $version = (Select-Xml -Path "src/GpsTrackerPc.App/GpsTrackerPc.App.csproj" -XPath "//Version").Node.InnerText
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "csproj 沒有 Version"
+          }
+
+          $exe = "publish\GpsTrackerPc.exe"
+          if (-not (Test-Path $exe)) {
+            throw "找不到 $exe"
+          }
+
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  GpsTrackerPc.exe" | Set-Content "GpsTrackerPc.exe.sha256" -Encoding ascii
+
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "打包完成：GpsTrackerPc.exe（v$version）"
+
+      - name: Create or update Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "gpstracker-desktop-latest"
+          $title = "GPS Tracker PC v$env:VERSION"
+          $notes = "版本 $env:VERSION`n`nWindows x64 單一 EXE（含網頁與模擬地圖資源）。"
+
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title $title --notes $notes --target $env:GITHUB_SHA --latest
+          } else {
+            gh release edit $tag --title $title --notes $notes --latest
+          }
+
+          gh release upload $tag "publish\GpsTrackerPc.exe" "GpsTrackerPc.exe.sha256" --clobber
+
+

@@ -90,14 +90,28 @@
               Click="OpenFolder_Click" />
     </StackPanel>
 
-    <Button Grid.Row="4"
-            Content="關閉"
-            Width="110"
-            Padding="0,7"
-            HorizontalAlignment="Right"
-            Background="#1E293B"
-            Foreground="#E2E8F0"
-            BorderBrush="#334155"
-            Click="Close_Click" />
+    <StackPanel Grid.Row="4"
+                Orientation="Horizontal"
+                HorizontalAlignment="Right">
+      <TextBlock x:Name="VersionText"
+                 Foreground="#94A3B8"
+                 FontSize="12"
+                 VerticalAlignment="Center"
+                 Margin="0,0,14,0" />
+      <Button Content="檢查更新"
+              Padding="14,7"
+              Margin="0,0,8,0"
+              Background="#1E293B"
+              Foreground="#E2E8F0"
+              BorderBrush="#334155"
+              Click="CheckUpdates_Click" />
+      <Button Content="關閉"
+              Width="110"
+              Padding="0,7"
+              Background="#1E293B"
+              Foreground="#E2E8F0"
+              BorderBrush="#334155"
+              Click="Close_Click" />
+    </StackPanel>
   </Grid>
 </Window>

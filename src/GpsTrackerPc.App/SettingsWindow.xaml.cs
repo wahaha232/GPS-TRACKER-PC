@@ -11,13 +11,23 @@ namespace GpsTrackerPc.App;
 public partial class SettingsWindow : Window
 {
     private readonly TokenStore _tokenStore;
+    private readonly Func<Task> _checkUpdates;
 
-    public SettingsWindow(TokenStore tokenStore)
+    public SettingsWindow(TokenStore tokenStore, Func<Task> checkUpdates)
     {
         InitializeComponent();
         _tokenStore = tokenStore;
+        _checkUpdates = checkUpdates;
         DataPathText.Text = AppPaths.DataDirectory;
+        var version = typeof(SettingsWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+        VersionText.Text = $"目前版本：v{version}";
         RefreshTokenStatus();
+    }
+
+    private async void CheckUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+        await _checkUpdates();
     }
 
     private void RefreshTokenStatus()

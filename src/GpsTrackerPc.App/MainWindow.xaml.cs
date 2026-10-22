@@ -6,6 +6,7 @@ using GpsTrackerPc.App.Infrastructure;
 using GpsTrackerPc.Core.Data;
 using GpsTrackerPc.Core.Gpx;
 using GpsTrackerPc.Core.Security;
+using GpsTrackerPc.Core.Updates;
 using Microsoft.Web.WebView2.Core;
 
 namespace GpsTrackerPc.App;
@@ -51,9 +52,13 @@ public partial class MainWindow : Window
     private readonly TokenStore _tokenStore;
     private readonly HttpClient _httpClient;
     private readonly DataSyncService _syncService;
+    private readonly HttpClient _updateClient;
+    private readonly UpdateService _updateService;
+    private readonly string _currentVersion;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _syncStateLock = new();
 
+    private bool _updateCheckRunning;
     private bool _pageLoaded;
     private bool _navigationStarted;
     private bool _pendingReload;
@@ -71,6 +76,9 @@ public partial class MainWindow : Window
             Timeout = TimeSpan.FromSeconds(60),
         };
         _syncService = new DataSyncService(_httpClient, _dataDirectory, AppPaths.SyncCacheFile);
+        _updateClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        _updateService = new UpdateService(_updateClient);
+        _currentVersion = typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -123,6 +131,9 @@ public partial class MainWindow : Window
 
             _navigationStarted = true;
             Browser.Source = new Uri(StartPage);
+
+            // 啟動時檢查一次；有新版只會詢問，不會自動安裝。
+            _ = CheckForUpdatesAsync(manual: false);
         }
         catch (Exception ex)
         {
@@ -313,12 +324,154 @@ public partial class MainWindow : Window
 
     private void OpenSettings()
     {
-        var window = new SettingsWindow(_tokenStore)
+        var window = new SettingsWindow(
+            _tokenStore,
+            () => CheckForUpdatesAsync(manual: true))
         {
             Owner = this,
         };
         window.ShowDialog();
     }
+
+    private async Task CheckForUpdatesAsync(bool manual)
+    {
+        if (_updateCheckRunning)
+        {
+            return;
+        }
+
+        _updateCheckRunning = true;
+        try
+        {
+            UpdateInfo? update;
+            try
+            {
+                update = await _updateService.CheckAsync(_currentVersion, _lifetime.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                if (manual)
+                {
+                    MessageBox.Show(
+                        this,
+                        "檢查更新失敗：\n\n" + ex.Message,
+                        "檢查更新",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+
+                return;
+            }
+
+            if (update == null)
+            {
+                if (manual)
+                {
+                    MessageBox.Show(
+                        this,
+                        $"目前已是最新版（v{_currentVersion}）。",
+                        "檢查更新",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+
+                return;
+            }
+
+            var notes = string.IsNullOrWhiteSpace(update.Notes)
+                ? string.Empty
+                : "\n\n" + Truncate(update.Notes, 500);
+            var answer = MessageBox.Show(
+                this,
+                $"有新版本 {update.Version}（目前 v{_currentVersion}）。{notes}\n\n要下載並安裝嗎？",
+                "發現新版本",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (answer != MessageBoxResult.Yes)
+            {
+                SyncStatusText.Text = "已取消更新。";
+                return;
+            }
+
+            var fileName = Path.GetFileName(update.AssetName);
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                MessageBox.Show(this, "更新檔名不正確，已取消。", "更新失敗", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var updateDirectory = Path.Combine(Path.GetTempPath(), "GpsTrackerPc-update");
+            Directory.CreateDirectory(updateDirectory);
+            var destination = Path.Combine(updateDirectory, fileName);
+            SyncStatusText.Text = $"下載更新 {update.Version}…";
+            var progress = new Progress<double?>(value =>
+            {
+                if (value.HasValue)
+                {
+                    SyncStatusText.Text = $"下載更新 {update.Version}… {value.Value:P0}";
+                }
+            });
+            await _updateService.DownloadAsync(update, destination, progress, _lifetime.Token);
+
+            var restartAnswer = MessageBox.Show(
+                this,
+                "更新檔已下載並通過 SHA-256 檢查。\n\n要立即重新啟動套用更新嗎？",
+                "安裝更新",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (restartAnswer != MessageBoxResult.Yes)
+            {
+                SyncStatusText.Text = "更新檔已下載，尚未安裝。";
+                return;
+            }
+
+            var executable = Environment.ProcessPath
+                ?? Path.Combine(AppContext.BaseDirectory, "GpsTrackerPc.exe");
+            var apply = UpdateInstaller.Apply(destination, executable, () =>
+            {
+                Process.Start(new ProcessStartInfo(executable) { UseShellExecute = true });
+            });
+            if (apply.Success)
+            {
+                SyncStatusText.Text = "更新完成，正在重新啟動…";
+                Application.Current.Shutdown();
+                return;
+            }
+
+            MessageBox.Show(
+                this,
+                "更新失敗，已還原成舊版。\n\n" + apply.ErrorMessage,
+                "更新失敗",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            SyncStatusText.Text = "更新失敗：" + apply.ErrorMessage;
+        }
+        catch (OperationCanceledException)
+        {
+            // 視窗關閉。
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                "更新失敗：\n\n" + ex.Message,
+                "更新失敗",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            SyncStatusText.Text = "更新失敗：" + ex.Message;
+        }
+        finally
+        {
+            _updateCheckRunning = false;
+        }
+    }
+
+    private static string Truncate(string text, int maxLength) =>
+        text.Length <= maxLength ? text : text[..maxLength] + "…";
 
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
 
@@ -326,6 +479,7 @@ public partial class MainWindow : Window
     {
         _lifetime.Cancel();
         _httpClient.Dispose();
+        _updateClient.Dispose();
         Browser.Dispose();
     }
 }

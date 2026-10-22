@@ -6,11 +6,13 @@
     <UseWPF>true</UseWPF>
     <RootNamespace>GpsTrackerPc.App</RootNamespace>
     <AssemblyName>GpsTrackerPc</AssemblyName>
+    <Version>0.1.0</Version>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
-    <!-- 網頁只維護一份：建置時從 gpstracker-web 原檔複製到輸出資料夾的 web\，不在本專案留副本。 -->
-    <WebSourceRoot Condition="'$(WebSourceRoot)' == ''">D:\Claude\ANDROID-APP-DEV\gpstracker-web\</WebSourceRoot>
+    <!-- 網頁只維護一份：建置時從 gpstracker-web 原檔複製到輸出資料夾的 web\，不在本專案留副本。
+         本機預設是 D:\Claude\ANDROID-APP-DEV\gpstracker-web；GitHub Actions 會用 -p:WebSourceRoot 覆寫。 -->
+    <WebSourceRoot Condition="'$(WebSourceRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\ANDROID-APP-DEV\gpstracker-web\</WebSourceRoot>
   </PropertyGroup>
 
   <ItemGroup>
@@ -30,23 +32,21 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 模擬視窗自己的地圖頁；MapLibre 使用 gpstracker-web\vendor 的同一份檔案。 -->
-    <None Update="Simulator\**\*.*">
+    <!-- 模擬視窗自己的地圖頁；單一 EXE 發佈時會一併打包，執行時解壓到 AppContext.BaseDirectory。 -->
+    <Content Include="Simulator\**\*.*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </None>
+    </Content>
+    <Content Include="$(WebSourceRoot)vendor\maplibre-gl.js"
+             Link="Simulator\vendor\maplibre-gl.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="$(WebSourceRoot)vendor\maplibre-gl.css"
+             Link="Simulator\vendor\maplibre-gl.css">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
-
-  <Target Name="CopyMapLibreForSimulator" AfterTargets="Build">
-    <Copy SourceFiles="$(WebSourceRoot)vendor\maplibre-gl.js;$(WebSourceRoot)vendor\maplibre-gl.css"
-          DestinationFolder="$(OutDir)Simulator\vendor"
-          SkipUnchangedFiles="true" />
-  </Target>
-
-  <Target Name="CopyMapLibreForSimulatorPublish" AfterTargets="Publish">
-    <Copy SourceFiles="$(WebSourceRoot)vendor\maplibre-gl.js;$(WebSourceRoot)vendor\maplibre-gl.css"
-          DestinationFolder="$(PublishDir)Simulator\vendor"
-          SkipUnchangedFiles="true" />
-  </Target>
 
 </Project>
