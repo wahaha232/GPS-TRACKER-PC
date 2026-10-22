@@ -25,5 +25,5 @@
 ## 每日紀錄
 
 - 2026-10-22｜Kilo｜依指示先做第 5 階段：把 GeoMath、SimulationRoute／RouteSimulator、GpxStreamImporter、LocationDocumentCodec、RandomRouteGenerator、SampleRouteFactory、RouteJsonCodec（原在 RouteRepository.kt，改用 System.Text.Json）移植到 `GpsTrackerPc.Simulation`，57 個 xUnit 測試全部通過｜測試 57/57 通過｜下一步：第 1 階段 WPF + WebView2 外殼
-- 2026-10-22｜Kilo｜完成第 1 階段：新增 `GpsTrackerPc.App`（WPF + WebView2），建置時從 `gpstracker-web` 複製網頁到輸出資料夾，注入 `GT_FEATURES` 關閉拍照／步數／分享；網頁原檔加入對應開關、隱藏步數環遊與分享按鈕、忽略桌面版網址參數；以 WebView2 實際載入驗證各頁開關生效｜網頁測試 90/90、C# 測試 57/57 通過｜下一步：第 2 階段 GitHub data/ 同步與 DPAPI Token
+- 2026-10-22｜Kilo｜完成第 1 階段：新增 `GpsTrackerPc.App`（WPF + WebView2），建置時從 `gpstracker-web` 複製網頁到輸出資料夾，注入 `GT_FEATURES` 關閉拍照／步數／分享；網頁原檔加入對應開關、隱藏步數環遊與分享按鈕、忽略桌面版網址參數；以 WebView2 實際載入驗證各頁開關生效（首頁／競賽中心／活動故事／紀錄管理／探索挑戰）｜C# 測試 57/57 通過；網頁測試 89/90，唯一失敗是同步遠端新資料後的既有資料檢查（`7bc9d72a…` 的 manifest 距離 2.553 km 與軌跡點路徑 3.000 km 不一致，與本次功能開關無關）｜下一步：第 2 階段 GitHub data/ 同步與 DPAPI Token
 
