@@ -1,0 +1,119 @@
+# GPS Tracker（Windows PC 版）
+
+把 GPS Tracker 的紀錄儀表板與 GPS 定位器的路線模擬合併成一個 Windows 桌面程式。
+
+- 紀錄端直接使用現有的 `gpstracker-web` 儀表板。
+- PC 端沒有 GPS，路線由模擬引擎產生；模擬紀錄會以裝置名稱 `PC`、`source: "simulated"` 上傳。
+- 桌面版隱藏拍照、步數與分享功能。
+- PC 是獨立裝置，模擬紀錄不與手機紀錄合併。
+
+## 系統需求
+
+- Windows 10／11 x64
+- Microsoft Edge WebView2 Runtime（Evergreen）
+  - Windows 11 通常已內建；如果沒有，啟動程式時會顯示下載頁面，不會直接結束。
+- 看地圖、同步資料與檢查更新需要網路；已經同步過的紀錄可以離線瀏覽。
+
+本發佈版是 **self-contained、win-x64**，其他電腦不需要另外安裝 .NET Runtime。
+
+## 安裝與啟動
+
+1. 解壓縮 `GpsTrackerPc-win-x64.zip`。
+2. 保持 `GpsTrackerPc.exe`、`web\`、`Simulator\` 在同一個資料夾。
+3. 執行 `GpsTrackerPc.exe`。
+
+程式第一次啟動會建立本機資料夾：
+
+```
+%LOCALAPPDATA%\GpsTrackerPc\
+  data\              同步下來的網站資料
+  routes\            儲存的路線
+  favorites.json     收藏地點
+  github-token.bin   DPAPI 加密後的 GitHub Token
+  sync-cache.json    同步用的 ETag 快取
+```
+
+## 第一次設定 GitHub Token
+
+Token 只用來「寫入」紀錄（GPX 匯入、模擬紀錄上傳）；閱讀公開資料不需要 Token。
+
+1. 在主畫面按「設定」。
+2. 在「GitHub Token」輸入具有該公開倉庫寫入權限的 Token。
+3. 按「儲存 Token」。
+
+Token 會用 Windows DPAPI（CurrentUser）加密後存在本機，畫面只顯示「已設定／未設定」，不會顯示內容，也不會寫進程式碼或記錄檔。要更換或刪除 Token，回到同一個設定畫面操作。
+
+## 資料同步
+
+- App 啟動時會自動同步一次。
+- 主畫面可按「立即同步」。
+- 同步來源是公開的 `gpstracker-web/data/`，會先下載 `manifest.json`，再下載缺少或變更的紀錄檔與 `meta.json`、`metro.json`、`steps.json`、`voyager.json`。
+- 下載失敗會保留本機舊檔，不會清空資料。
+- 主畫面會顯示上次同步時間與結果。
+
+## GPX 匯出
+
+1. 按「匯出 GPX」。
+2. 勾選一筆或多筆紀錄。
+3. 按「選擇資料夾並匯出」，選一個資料夾。
+4. 每筆會存成 `<trackId>.gpx`，畫面會顯示成功與失敗筆數。
+
+## GPX 匯入
+
+1. 按「匯入 GPX」，可以多選檔案，也可以把 `.gpx` 拖進視窗。
+2. 視窗會先顯示每個檔案的日期、距離、時間、點數與無時間點數量。
+3. 選擇移動方式（預設「未知」）。
+4. 按「開始匯入」並確認公開警告。
+
+匯入會依序一筆一筆上傳；重複、解析失敗或上傳失敗的檔案會標示原因並跳過，不會中斷整批。紀錄會寫入公開的 GitHub 倉庫，任何人都看得到路線與時間。
+
+## 模擬路線
+
+1. 主畫面按「模擬」。
+2. 地圖上點擊新增路線點；拖曳圓點可移動；右側清單可調整順序、刪除與設定停留秒數。
+3. 可設定速度（走路 5／跑步 10／騎車 18／開車 40 km/h，或自訂 0.5–500）、循環路線、速度自然起伏與依 GPX 時間播放。
+4. 可新增 GPS 中斷時段（開始秒數、持續秒數）。
+5. 可搜尋地點（Nominatim，每秒最多一次）、收藏地點、用隨機漫步／環狀產生路線。
+6. 可匯入 GPX／KML、匯出 GPX／KML，或把路線存在 `%LOCALAPPDATA%\GpsTrackerPc\routes\`。
+
+### 播放
+
+- 「開始」後以每秒取樣推進；可「暫停」「繼續」「停止」。
+- 倍速支援 1／2／4／8。
+- 會顯示進度、已過時間、目前速度與已走距離。
+- GPS 中斷期間不記錄位置，地圖上的播放標記會變紅並顯示中斷提示。
+- 「直接產生」會直接算完整條路線；循環路線可指定圈數。
+
+### 上傳模擬紀錄
+
+1. 先即時播放完成，或按「直接產生」。
+2. 按「上傳成紀錄」。
+3. 確認摘要（日期、距離、時間、點數、裝置 `PC`、來源 `simulated`），必要時修改開始時間（預設現在）。
+4. 按「確認上傳」並確認公開警告。
+
+模擬紀錄會轉成與網站匯入相同的格式；GPS 中斷期間的點不會寫入。上傳沿用 GitHub Contents API，遇到 409／422 會重讀 manifest 合併後重試。
+
+## 自動更新
+
+- App 啟動時會檢查一次 `gpstracker-desktop-latest` Release。
+- 設定畫面也有「檢查更新」。
+- 有新版本時會先詢問，不會自動安裝。
+- 下載後會用 Release 附的 SHA-256 檢查；不符合會刪除下載檔。
+- 確認安裝後，舊 EXE 會改名為 `.old`，放入新 EXE 並重新啟動；下次啟動會刪除 `.old`。
+- 任何替換步驟失敗都會還原成舊版。
+
+更新來源：`https://github.com/wahaha232/GPS-TRACKER-PC/releases/tag/gpstracker-desktop-latest`
+
+## 隱私與注意事項
+
+- GPX 匯入與模擬上傳會寫入**公開**的 GitHub 倉庫，路線、時間與裝置名稱任何人都看得到。
+- Token 只存在本機並以 DPAPI 加密；不要把 `github-token.bin` 或 Token 分享給別人。
+- 桌面版沒有拍照、步數與分享功能。
+- 地圖底圖使用 Esri World Imagery，需要網路。
+
+## 疑難排解
+
+- **出現「找不到 WebView2 Runtime」**：依畫面按鈕開啟官方下載頁，安裝 Evergreen Runtime 後重新啟動。
+- **同步失敗**：確認網路；失敗不會刪除既有資料，可稍後再按「立即同步」。
+- **上傳失敗**：確認 Token 有寫入權限，且尚未過期；重複紀錄會被跳過。
+- **更新失敗**：程式會保留舊版；可稍後再從設定畫面檢查更新。

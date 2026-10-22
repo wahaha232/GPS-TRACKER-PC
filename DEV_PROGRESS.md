@@ -18,7 +18,7 @@
 | 5 | 模擬引擎從 gps-locator-tw 移植成 C#（RouteSimulator、GpxStreamImporter、RandomRouteGenerator、GeoMath）＋單元測試 | 6% | 完成 |
 | 6 | 路線編輯與播放畫面（地圖點選、地點搜尋、收藏、隨機路線、暫停／倍速／進度列） | 9% | 完成 |
 | 7 | 模擬結果轉成紀錄、以裝置「PC」上傳、標 source: "simulated"、處理網站預設裝置 | 4% | 完成 |
-| 8 | 整合測試、打包、修錯 | 6% | 未開始 |
+| 8 | 整合測試、打包、修錯 | 6% | 完成 |
 
 第 1 階段完成後，依實際耗用重新估算剩餘時程。
 
@@ -32,4 +32,5 @@
 - 2026-10-22｜Kilo｜完成第 6 階段 B：新增可注入時間的 `PlaybackController`（即時播放、暫停／繼續／停止、1/2/4/8 倍速、每秒取樣、中斷不取樣、直接產生、循環圈數）與 `PlaybackSample`／`PlaybackResult`；SimulatorWindow 加入播放控制、進度／時間／速度／距離、GPS 中斷提示；地圖加入播放標記、走過軌跡與中斷樣式；結果只存在記憶體，沒有上傳或轉成網站格式。實際開過播放視窗：開始／暫停／繼續／停止、中斷提示、直接產生 15 個取樣點與地圖軌跡｜測試 130/130 通過（Core 73、Simulation 57），`dotnet build` 0 警告 0 錯誤｜下一步：第 7 階段模擬結果轉成紀錄（先確認網站預設裝置要不要排除 PC）
 - 2026-10-22｜Kilo｜完成第 7 階段：新增 `SimulatedRecordBuilder`（取樣→GpxTrackBuilder；排除中斷點、deviceName PC、source simulated、可選開始時間）與 `SimulatedUploadWindow`（摘要／時間／公開倉庫警告，沿用 GitHubRecordUploader）；網站 `chooseDevice` 改成沒指定時排除 PC、只有 PC 才退回 PC，新增 `tests/device.test.js` 並重算雜湊。實際開過上傳對話框，確認摘要（日期、距離、時間、點數、PC、simulated）與開始時間；沒有按下確認上傳｜PC 測試 135/135 通過（Core 78、Simulation 57），`dotnet build` 0 警告 0 錯誤；網站測試 94/95 通過，唯一失敗是既有 `實際軌跡檔：分段與移動時間合理` 資料問題｜下一步：第 8 階段整合打包
 - 2026-10-22｜Kilo｜完成第 4 階段：新增 `UpdateVersion`／`UpdateService`／`UpdateInstaller`（版本比較、GitHub Release 查詢、下載網址白名單、SHA-256、EXE 替換與失敗還原、啟動清理 .old）；App 啟動檢查一次、設定畫面「檢查更新」、下載後詢問才重啟；新增 `.github/workflows/desktop-release.yml`（windows-latest、測試、單一 EXE、SHA-256、Release tag `gpstracker-desktop-latest`）與 csproj Version 0.1.0；本機 `dotnet publish` 已產出單一 EXE（含網頁／模擬資源），但沒有啟動 App｜測試 152/152 通過（Core 95、Simulation 57），`dotnet build` 0 警告 0 錯誤｜下一步：第 8 階段整合打包（workflow 尚未在 GitHub Actions 實際跑過）
+- 2026-10-22｜Kilo｜完成第 8 階段：新增端到端整合測試（路線→播放→PC 紀錄→上傳、GPX 匯入上傳、GPX 匯出再匯入、資料同步保留舊檔、更新檢查下載替換與失敗還原）；WebView2 Runtime 缺少時顯示下載連結；排除打包中的 `web/tests`；新增 README；self-contained win-x64 資料夾發佈到 `publish\`（143.64 MB，531 個檔案），並壓成 `GpsTrackerPc-win-x64.zip`（62.81 MB）；未執行 EXE｜PC 測試 157/157 通過（Core 100、Simulation 57），`dotnet build` 0 警告 0 錯誤；網站測試 94/95 通過，唯一失敗仍是既有資料問題｜下一步：交付測試（GitHub Actions 與實機 WebView2／更新流程仍需使用者驗證）
 

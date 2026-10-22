@@ -11,7 +11,7 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <!-- 網頁只維護一份：建置時從 gpstracker-web 原檔複製到輸出資料夾的 web\，不在本專案留副本。
-         本機預設是 D:\Claude\ANDROID-APP-DEV\gpstracker-web；GitHub Actions 會用 -p:WebSourceRoot 覆寫。 -->
+         本機預設是本專案往上三層的 ANDROID-APP-DEV\gpstracker-web；GitHub Actions 會用 -p:WebSourceRoot 覆寫。 -->
     <WebSourceRoot Condition="'$(WebSourceRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\ANDROID-APP-DEV\gpstracker-web\</WebSourceRoot>
   </PropertyGroup>
 
@@ -24,7 +24,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="$(WebSourceRoot)**\*.*">
+    <Content Include="$(WebSourceRoot)**\*.*"
+             Exclude="$(WebSourceRoot)tests\**\*.*">
       <Link>web\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>

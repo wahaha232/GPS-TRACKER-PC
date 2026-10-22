@@ -20,6 +20,8 @@ public partial class MainWindow : Window
     private const string VirtualHost = "gpstracker.local";
     private const string DataHost = "gpstracker-data.local";
     private const string StartPage = "https://gpstracker.local/index.html";
+    private const string WebView2DownloadPage =
+        "https://developer.microsoft.com/microsoft-edge/webview2/";
 
     // 必須在頁面任何 script 執行前注入。
     // 1. 關閉桌面版沒有的功能（拍照／步數／分享）。
@@ -99,6 +101,12 @@ public partial class MainWindow : Window
                 return;
             }
 
+            if (!IsWebView2RuntimeAvailable())
+            {
+                ShowWebView2Missing();
+                return;
+            }
+
             Browser.DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x0B, 0x12, 0x20);
 
             await Browser.EnsureCoreWebView2Async();
@@ -137,7 +145,55 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            ShowError("初始化 WebView2 失敗：\n\n" + ex.Message);
+            if (ex is WebView2RuntimeNotFoundException or DllNotFoundException)
+            {
+                ShowWebView2Missing();
+            }
+            else
+            {
+                ShowError("初始化 WebView2 失敗：\n\n" + ex.Message);
+            }
+        }
+    }
+
+    private static bool IsWebView2RuntimeAvailable()
+    {
+        try
+        {
+            return !string.IsNullOrWhiteSpace(CoreWebView2Environment.GetAvailableBrowserVersionString());
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private void ShowWebView2Missing()
+    {
+        LoadingPanel.Visibility = Visibility.Collapsed;
+        ErrorPanel.Visibility = Visibility.Visible;
+        WebView2DownloadButton.Visibility = Visibility.Visible;
+        ErrorText.Text =
+            "找不到 Microsoft Edge WebView2 Runtime。\n\n" +
+            "這個程式需要 WebView2 Runtime 才能顯示介面。請下載並安裝「Evergreen Runtime」，" +
+            "安裝完成後重新啟動這個程式。\n\n" +
+            "下載頁面：" + WebView2DownloadPage;
+    }
+
+    private void OpenWebView2Download_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(WebView2DownloadPage) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                "無法開啟瀏覽器，請手動到以下網址下載：\n\n" + WebView2DownloadPage + "\n\n" + ex.Message,
+                "無法開啟下載頁面",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
         }
     }
 
@@ -258,6 +314,7 @@ public partial class MainWindow : Window
     {
         LoadingPanel.Visibility = Visibility.Collapsed;
         ErrorText.Text = message;
+        WebView2DownloadButton.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Visible;
     }
 
