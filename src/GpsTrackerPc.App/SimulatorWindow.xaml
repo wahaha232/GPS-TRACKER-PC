@@ -3,12 +3,13 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="模擬路線編輯"
+        Icon="Assets/GpsTrackerPc.ico"
         Width="1450"
         Height="900"
         MinWidth="1100"
         MinHeight="720"
         WindowStartupLocation="CenterOwner"
-        Background="#0B1220"
+        Background="{DynamicResource AppBackground}"
         Loaded="Window_Loaded"
         Closing="Window_Closing"
         StateChanged="Window_StateChanged"
@@ -17,37 +18,37 @@
         Deactivated="Window_Deactivated">
   <Window.Resources>
     <Style TargetType="TextBlock">
-      <Setter Property="Foreground" Value="#E2E8F0" />
+      <Setter Property="Foreground" Value="{DynamicResource AppText}" />
     </Style>
     <Style TargetType="Button">
-      <Setter Property="Background" Value="#1E293B" />
-      <Setter Property="Foreground" Value="#E2E8F0" />
-      <Setter Property="BorderBrush" Value="#334155" />
+      <Setter Property="Background" Value="{DynamicResource AppBorder}" />
+      <Setter Property="Foreground" Value="{DynamicResource AppText}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AppBorderStrong}" />
       <Setter Property="Padding" Value="10,4" />
     </Style>
     <Style TargetType="TextBox">
-      <Setter Property="Background" Value="#0F172A" />
-      <Setter Property="Foreground" Value="#E2E8F0" />
-      <Setter Property="BorderBrush" Value="#334155" />
+      <Setter Property="Background" Value="{DynamicResource AppSurfaceAlt}" />
+      <Setter Property="Foreground" Value="{DynamicResource AppText}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AppBorderStrong}" />
       <Setter Property="Padding" Value="6,4" />
     </Style>
     <Style TargetType="ComboBox">
-      <Setter Property="Background" Value="#0F172A" />
-      <Setter Property="Foreground" Value="#E2E8F0" />
-      <Setter Property="BorderBrush" Value="#334155" />
+      <Setter Property="Background" Value="{DynamicResource AppSurfaceAlt}" />
+      <Setter Property="Foreground" Value="{DynamicResource AppText}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AppBorderStrong}" />
       <Setter Property="Padding" Value="6,3" />
     </Style>
     <Style TargetType="CheckBox">
-      <Setter Property="Foreground" Value="#E2E8F0" />
+      <Setter Property="Foreground" Value="{DynamicResource AppText}" />
       <Setter Property="Margin" Value="0,4,0,0" />
     </Style>
     <Style TargetType="ListBox">
-      <Setter Property="Background" Value="#0F172A" />
-      <Setter Property="Foreground" Value="#E2E8F0" />
-      <Setter Property="BorderBrush" Value="#1E293B" />
+      <Setter Property="Background" Value="{DynamicResource AppSurfaceAlt}" />
+      <Setter Property="Foreground" Value="{DynamicResource AppText}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AppBorder}" />
     </Style>
     <Style TargetType="Separator">
-      <Setter Property="Background" Value="#1E293B" />
+      <Setter Property="Background" Value="{DynamicResource AppBorder}" />
       <Setter Property="Margin" Value="0,12" />
     </Style>
     <Style x:Key="Section" TargetType="TextBlock">
@@ -66,43 +67,43 @@
     <Grid Grid.Column="0">
       <wv2:WebView2 x:Name="MapView" />
 
-      <Border Background="#CC0B1220"
+      <Border Background="{DynamicResource AppOverlayBackground}"
               CornerRadius="6"
               Padding="10,7"
               HorizontalAlignment="Left"
               VerticalAlignment="Top"
               Margin="12">
         <TextBlock Text="點地圖新增路線點；拖曳圓點可移動；點圓點可在右側編輯。"
-                   Foreground="#CBD5E1"
+                   Foreground="{DynamicResource AppTextSoft}"
                    FontSize="12" />
       </Border>
 
-      <Border x:Name="LoadingPanel" Background="#0B1220">
+      <Border x:Name="LoadingPanel" Background="{DynamicResource AppBackground}">
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
           <TextBlock Text="🗺️"
                      FontSize="44"
                      HorizontalAlignment="Center"
                      Margin="0,0,0,10" />
           <TextBlock Text="正在載入模擬地圖…"
-                     Foreground="#94A3B8"
+                     Foreground="{DynamicResource AppTextMuted}"
                      FontSize="14"
                      HorizontalAlignment="Center" />
         </StackPanel>
       </Border>
 
       <Border x:Name="ErrorPanel"
-              Background="#0B1220"
+              Background="{DynamicResource AppBackground}"
               Visibility="Collapsed">
         <StackPanel HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     MaxWidth="620">
           <TextBlock Text="地圖無法載入"
-                     Foreground="#FCA5A5"
+                     Foreground="{DynamicResource AppDangerText}"
                      FontSize="22"
                      FontWeight="SemiBold"
                      Margin="0,0,0,10" />
           <TextBlock x:Name="ErrorText"
-                     Foreground="#E2E8F0"
+                     Foreground="{DynamicResource AppText}"
                      FontSize="13"
                      TextWrapping="Wrap" />
         </StackPanel>
@@ -110,18 +111,23 @@
     </Grid>
 
     <Border Grid.Column="1"
-            Background="#0B1220"
-            BorderBrush="#1E293B"
+            Background="{DynamicResource AppBackground}"
+            BorderBrush="{DynamicResource AppBorder}"
             BorderThickness="1,0,0,0">
       <ScrollViewer VerticalScrollBarVisibility="Auto"
                     HorizontalScrollBarVisibility="Disabled"
                     Padding="16,14">
         <StackPanel>
+          <Button Content="← 回首頁"
+                  HorizontalAlignment="Left"
+                  Padding="12,5"
+                  Margin="0,0,0,10"
+                  Click="BackToHome_Click" />
           <TextBlock Text="模擬路線編輯"
                      FontSize="20"
                      FontWeight="SemiBold" />
           <TextBlock Text="6A／6B：編輯、儲存、即時播放與直接產生。"
-                     Foreground="#94A3B8"
+                     Foreground="{DynamicResource AppTextMuted}"
                      FontSize="12"
                      Margin="0,4,0,0" />
 
@@ -130,16 +136,20 @@
                     DisplayMemberPath="Label"
                     SelectedValuePath="Value"
                     SelectionChanged="Basemap_Changed" />
-          <ToggleButton x:Name="FollowToggle"
-                        Content="跟隨"
-                        HorizontalAlignment="Left"
-                        Padding="14,5"
-                        Margin="0,6,0,0"
-                        Background="#1E293B"
-                        Foreground="#E2E8F0"
-                        BorderBrush="#334155"
-                        Checked="Follow_Changed"
-                        Unchecked="Follow_Changed" />
+          <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+            <ToggleButton x:Name="FollowToggle"
+                          Content="跟隨"
+                          Padding="14,5"
+                          Margin="0,0,6,0"
+                          Background="{DynamicResource AppBorder}"
+                          Foreground="{DynamicResource AppText}"
+                          BorderBrush="{DynamicResource AppBorderStrong}"
+                          Checked="Follow_Changed"
+                          Unchecked="Follow_Changed" />
+            <Button Content="定位"
+                    Padding="14,5"
+                    Click="Locate_Click" />
+          </StackPanel>
 
           <StackPanel x:Name="RouteEditPanel">
           <TextBlock Text="路線名稱" Style="{StaticResource Section}" />
@@ -169,7 +179,7 @@
           <Separator />
           <TextBlock Text="路線點" Style="{StaticResource Section}" />
           <TextBlock x:Name="WaypointSummaryText"
-                     Foreground="#94A3B8"
+                     Foreground="{DynamicResource AppTextMuted}"
                      FontSize="12"
                      Margin="0,0,0,6" />
           <ListBox x:Name="WaypointList"
@@ -283,14 +293,14 @@
                        Maximum="100"
                        Value="0"
                        Margin="0,8,0,0"
-                       Background="#1E293B"
-                       Foreground="#22C55E" />
+                       Background="{DynamicResource AppBorder}"
+                       Foreground="{DynamicResource AppSuccess}" />
           <TextBlock x:Name="PlaybackOutageText"
-                     Foreground="#FCA5A5"
+                     Foreground="{DynamicResource AppDangerText}"
                      FontSize="12"
                      Margin="0,6,0,0" />
           <TextBlock x:Name="PlaybackMetaText"
-                     Foreground="#94A3B8"
+                     Foreground="{DynamicResource AppTextMuted}"
                      FontSize="12"
                      Margin="0,4,0,0"
                      TextWrapping="Wrap" />
@@ -304,7 +314,7 @@
           </WrapPanel>
 
           <TextBlock x:Name="StatusText"
-                     Foreground="#94A3B8"
+                     Foreground="{DynamicResource AppTextMuted}"
                      FontSize="12"
                      TextWrapping="Wrap"
                      Margin="0,12,0,0" />

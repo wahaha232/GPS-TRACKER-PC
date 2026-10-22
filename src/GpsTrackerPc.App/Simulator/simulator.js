@@ -558,6 +558,11 @@
             map.panTo([message.lon, message.lat], { duration: 250 });
           }
           break;
+        case "locatePosition":
+          if (Number.isFinite(message.lat) && Number.isFinite(message.lon)) {
+            map.panTo([message.lon, message.lat], { duration: 300 });
+          }
+          break;
         default:
           break;
       }

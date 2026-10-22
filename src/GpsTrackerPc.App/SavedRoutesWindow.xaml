@@ -7,7 +7,7 @@
         MinWidth="640"
         MinHeight="420"
         WindowStartupLocation="CenterOwner"
-        Background="#0B1220">
+        Background="{DynamicResource AppBackground}">
   <Grid Margin="18">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
@@ -18,11 +18,11 @@
 
     <StackPanel Grid.Row="0">
       <TextBlock Text="已存路線"
-                 Foreground="#E2E8F0"
+                 Foreground="{DynamicResource AppText}"
                  FontSize="20"
                  FontWeight="SemiBold" />
       <TextBlock Text="路線存在 %LOCALAPPDATA%\GpsTrackerPc\routes\，檔案內容使用 RouteJsonCodec。"
-                 Foreground="#94A3B8"
+                 Foreground="{DynamicResource AppTextMuted}"
                  FontSize="12"
                  Margin="0,6,0,0" />
     </StackPanel>
@@ -30,14 +30,14 @@
     <ListBox x:Name="RouteList"
              Grid.Row="1"
              Margin="0,14,0,0"
-             Background="#0F172A"
-             Foreground="#E2E8F0"
-             BorderBrush="#1E293B"
+             Background="{DynamicResource AppSurfaceAlt}"
+             Foreground="{DynamicResource AppText}"
+             BorderBrush="{DynamicResource AppBorder}"
              DisplayMemberPath="Display" />
 
     <TextBlock x:Name="StatusText"
                Grid.Row="2"
-               Foreground="#94A3B8"
+               Foreground="{DynamicResource AppTextMuted}"
                FontSize="12"
                Margin="0,10,0,0"
                TextWrapping="Wrap" />
@@ -48,23 +48,23 @@
                 Margin="0,14,0,0">
       <Button Content="載入"
               Padding="16,7"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="Load_Click" />
       <Button Content="刪除"
               Padding="16,7"
               Margin="8,0,0,0"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="Delete_Click" />
       <Button Content="關閉"
               Padding="16,7"
               Margin="8,0,0,0"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="Close_Click" />
     </StackPanel>
   </Grid>

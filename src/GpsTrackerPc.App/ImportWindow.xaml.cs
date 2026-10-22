@@ -3,7 +3,6 @@ using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Windows;
-using System.Windows.Media;
 using GpsTrackerPc.App.Infrastructure;
 using GpsTrackerPc.Core.Gpx;
 using GpsTrackerPc.Core.Security;
@@ -48,8 +47,9 @@ public partial class ImportWindow : Window
         TokenStatusText.Text = hasToken
             ? "Token：已設定"
             : "尚未設定 GitHub Token，請先回主畫面按「設定」輸入，才能匯入。";
-        TokenStatusText.Foreground = new SolidColorBrush(
-            hasToken ? Color.FromRgb(0x86, 0xEF, 0xAC) : Color.FromRgb(0xFC, 0xA5, 0xA5));
+        TokenStatusText.SetResourceReference(
+            System.Windows.Controls.TextBlock.ForegroundProperty,
+            hasToken ? "AppSuccessText" : "AppDangerText");
         ImportButton.IsEnabled = hasToken && Rows.Any(row => row.IsValid);
     }
 

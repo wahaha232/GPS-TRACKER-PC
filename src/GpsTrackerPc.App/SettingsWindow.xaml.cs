@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
-using System.Windows.Media;
 using GpsTrackerPc.App.Infrastructure;
+using GpsTrackerPc.Core.Appearance;
 using GpsTrackerPc.Core.Security;
 using GpsTrackerPc.Core.Simulator;
 using GpsTrackerPc.Core.Updates;
@@ -15,6 +15,7 @@ public partial class SettingsWindow : Window
     private readonly TokenStore _tokenStore;
     private readonly DeviceNameStore _deviceNameStore;
     private readonly UpdateCheckStore _updateCheckStore;
+    private readonly ThemeSettingsStore _themeStore;
     private readonly Func<Task> _checkUpdates;
     private bool _updatingUi;
 
@@ -28,12 +29,15 @@ public partial class SettingsWindow : Window
         _tokenStore = tokenStore;
         _deviceNameStore = deviceNameStore;
         _updateCheckStore = updateCheckStore;
+        _themeStore = new ThemeSettingsStore(AppPaths.ThemeFile);
         _checkUpdates = checkUpdates;
         DataPathText.Text = AppPaths.DataDirectory;
         DeviceNameBox.Text = _deviceNameStore.Load();
         VersionText.Text = $"目前版本：v{AppVersion.Current}";
         _updatingUi = true;
         AutoCheckUpdatesCheck.IsChecked = _updateCheckStore.Load().AutoCheckEnabled;
+        ThemeBox.ItemsSource = ThemeCatalog.Options;
+        ThemeBox.SelectedValue = _themeStore.Load();
         _updatingUi = false;
         RefreshLastCheck();
         RefreshTokenStatus();
@@ -118,6 +122,17 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private void Theme_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_updatingUi || ThemeBox.SelectedValue is not AppThemePreference preference)
+        {
+            return;
+        }
+
+        _themeStore.Save(preference);
+        ThemeManager.Apply(preference);
+    }
+
     private void RefreshLastCheck()
     {
         var state = _updateCheckStore.Load();
@@ -134,8 +149,9 @@ public partial class SettingsWindow : Window
         TokenStatusText.Text = hasToken
             ? "狀態：已設定（內容不會顯示）"
             : "狀態：未設定";
-        TokenStatusText.Foreground = new SolidColorBrush(
-            hasToken ? Color.FromRgb(0x86, 0xEF, 0xAC) : Color.FromRgb(0x94, 0xA3, 0xB8));
+        TokenStatusText.SetResourceReference(
+            System.Windows.Controls.TextBlock.ForegroundProperty,
+            hasToken ? "AppSuccessText" : "AppTextMuted");
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)

@@ -7,7 +7,7 @@
         MinWidth="620"
         MinHeight="520"
         WindowStartupLocation="CenterOwner"
-        Background="#0B1220"
+        Background="{DynamicResource AppBackground}"
         Closing="Window_Closing">
   <Grid Margin="20">
     <Grid.RowDefinitions>
@@ -21,24 +21,24 @@
 
     <StackPanel Grid.Row="0">
       <TextBlock Text="上傳成紀錄"
-                 Foreground="#E2E8F0"
+                 Foreground="{DynamicResource AppText}"
                  FontSize="20"
                  FontWeight="SemiBold" />
       <TextBlock Text="把這次模擬的取樣轉成網站紀錄。GPS 中斷期間不會寫入位置。"
-                 Foreground="#94A3B8"
+                 Foreground="{DynamicResource AppTextMuted}"
                  FontSize="12"
                  Margin="0,6,0,0" />
     </StackPanel>
 
     <Border Grid.Row="1"
-            Background="#0F172A"
-            BorderBrush="#1E293B"
+            Background="{DynamicResource AppSurfaceAlt}"
+            BorderBrush="{DynamicResource AppBorder}"
             BorderThickness="1"
             CornerRadius="6"
             Padding="14"
             Margin="0,14,0,0">
       <TextBlock x:Name="SummaryText"
-                 Foreground="#E2E8F0"
+                 Foreground="{DynamicResource AppText}"
                  FontSize="13"
                  LineHeight="24"
                  TextWrapping="Wrap" />
@@ -47,7 +47,7 @@
     <StackPanel Grid.Row="2"
                 Margin="0,14,0,0">
       <TextBlock Text="開始時間（預設現在）"
-                 Foreground="#E2E8F0"
+                 Foreground="{DynamicResource AppText}"
                  FontSize="13"
                  FontWeight="SemiBold" />
       <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
@@ -56,30 +56,30 @@
                  TextChanged="StartTimeBox_TextChanged" />
         <Button Content="現在"
                 Margin="8,0,0,0"
-                Background="#1E293B"
-                Foreground="#E2E8F0"
-                BorderBrush="#334155"
+                Background="{DynamicResource AppBorder}"
+                Foreground="{DynamicResource AppText}"
+                BorderBrush="{DynamicResource AppBorderStrong}"
                 Click="Now_Click" />
       </StackPanel>
     </StackPanel>
 
     <Border Grid.Row="3"
-            Background="#3B1D1D"
-            BorderBrush="#7F1D1D"
+            Background="{DynamicResource AppDangerSurface}"
+            BorderBrush="{DynamicResource AppDangerBorder}"
             BorderThickness="1"
             CornerRadius="6"
             Padding="12,10"
             Margin="0,16,0,0"
             VerticalAlignment="Top">
       <TextBlock Text="⚠️ 上傳後紀錄會寫入公開的 GitHub 倉庫，任何人都看得到路線與時間。裝置名稱使用設定中的值，來源標記為 simulated。"
-                 Foreground="#FCA5A5"
+                 Foreground="{DynamicResource AppDangerText}"
                  FontSize="12"
                  TextWrapping="Wrap" />
     </Border>
 
     <TextBlock x:Name="StatusText"
                Grid.Row="4"
-               Foreground="#94A3B8"
+               Foreground="{DynamicResource AppTextMuted}"
                FontSize="12"
                TextWrapping="Wrap"
                Margin="0,12,0,0" />
@@ -91,17 +91,17 @@
       <Button x:Name="UploadButton"
               Content="確認上傳"
               Padding="16,7"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="Upload_Click" />
       <Button x:Name="CloseButton"
               Content="取消"
               Padding="16,7"
               Margin="8,0,0,0"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="Close_Click" />
     </StackPanel>
   </Grid>

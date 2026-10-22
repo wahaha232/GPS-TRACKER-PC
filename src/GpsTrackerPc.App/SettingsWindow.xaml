@@ -6,7 +6,7 @@
         Height="700"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
-        Background="#0B1220">
+        Background="{DynamicResource AppBackground}">
   <Grid Margin="24">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
@@ -18,15 +18,15 @@
 
     <StackPanel Grid.Row="0">
       <TextBlock Text="GitHub Token"
-                 Foreground="#E2E8F0"
+                 Foreground="{DynamicResource AppText}"
                  FontSize="20"
                  FontWeight="SemiBold" />
       <TextBlock x:Name="TokenStatusText"
-                 Foreground="#94A3B8"
+                 Foreground="{DynamicResource AppTextMuted}"
                  FontSize="13"
                  Margin="0,6,0,0" />
       <TextBlock Text="Token 只用來編輯／上傳紀錄，會以 Windows DPAPI（CurrentUser）加密後存在本機；畫面不會顯示內容，也不會寫進程式碼或記錄檔。"
-                 Foreground="#94A3B8"
+                 Foreground="{DynamicResource AppTextMuted}"
                  FontSize="12"
                  TextWrapping="Wrap"
                  Margin="0,8,0,0" />
@@ -37,9 +37,9 @@
                  Height="34"
                  Margin="0,16,0,0"
                  Padding="8,6"
-                 Background="#0F172A"
-                 Foreground="#E2E8F0"
-                 BorderBrush="#334155"
+                 Background="{DynamicResource AppSurfaceAlt}"
+                 Foreground="{DynamicResource AppText}"
+                 BorderBrush="{DynamicResource AppBorderStrong}"
                  PasswordChar="●" />
 
     <StackPanel Grid.Row="2"
@@ -47,16 +47,16 @@
                 Margin="0,12,0,0">
       <Button Content="儲存 Token"
               Padding="14,6"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="Save_Click" />
       <Button Content="刪除 Token"
               Padding="14,6"
               Margin="8,0,0,0"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="Delete_Click" />
     </StackPanel>
 
@@ -64,14 +64,14 @@
                   VerticalScrollBarVisibility="Auto"
                   Margin="0,24,0,0">
       <StackPanel>
-      <Separator Background="#1E293B" />
+      <Separator Background="{DynamicResource AppBorder}" />
       <TextBlock Text="本機資料夾"
-                 Foreground="#E2E8F0"
+                 Foreground="{DynamicResource AppText}"
                  FontSize="14"
                  FontWeight="SemiBold"
                  Margin="0,16,0,0" />
       <TextBlock Text="從 GitHub 同步下來的 manifest.json、紀錄檔與 meta.json 都放在這裡；沒有網路時網頁會讀這份資料。"
-                 Foreground="#94A3B8"
+                 Foreground="{DynamicResource AppTextMuted}"
                  FontSize="12"
                  TextWrapping="Wrap"
                  Margin="0,6,0,0" />
@@ -79,66 +79,82 @@
                IsReadOnly="True"
                Margin="0,10,0,0"
                Padding="8,6"
-               Background="#0F172A"
-               Foreground="#E2E8F0"
-               BorderBrush="#334155" />
+               Background="{DynamicResource AppSurfaceAlt}"
+               Foreground="{DynamicResource AppText}"
+               BorderBrush="{DynamicResource AppBorderStrong}" />
       <Button Content="開啟資料夾"
               HorizontalAlignment="Left"
               Padding="14,6"
               Margin="0,10,0,0"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="OpenFolder_Click" />
 
-      <Separator Background="#1E293B" Margin="0,16,0,0" />
+      <Separator Background="{DynamicResource AppBorder}" Margin="0,16,0,0" />
       <TextBlock Text="裝置名稱"
-                 Foreground="#E2E8F0"
+                 Foreground="{DynamicResource AppText}"
                  FontSize="14"
                  FontWeight="SemiBold"
                  Margin="0,16,0,0" />
       <TextBlock Text="上傳紀錄時使用的裝置名稱，預設 PC。多台電腦請使用不同名稱；和手機同名會被拒絕，和其他模擬裝置同名會提示會合併。"
-                 Foreground="#94A3B8"
+                 Foreground="{DynamicResource AppTextMuted}"
                  FontSize="12"
                  TextWrapping="Wrap"
                  Margin="0,6,0,0" />
       <TextBox x:Name="DeviceNameBox"
                Margin="0,10,0,0"
                Padding="8,6"
-               Background="#0F172A"
-               Foreground="#E2E8F0"
-               BorderBrush="#334155" />
+               Background="{DynamicResource AppSurfaceAlt}"
+               Foreground="{DynamicResource AppText}"
+               BorderBrush="{DynamicResource AppBorderStrong}" />
       <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
         <Button Content="儲存裝置名稱"
                 Padding="14,6"
-                Background="#1E293B"
-                Foreground="#E2E8F0"
-                BorderBrush="#334155"
+                Background="{DynamicResource AppBorder}"
+                Foreground="{DynamicResource AppText}"
+                BorderBrush="{DynamicResource AppBorderStrong}"
                 Click="SaveDeviceName_Click" />
         <TextBlock x:Name="DeviceNameStatusText"
-                   Foreground="#94A3B8"
+                   Foreground="{DynamicResource AppTextMuted}"
                    FontSize="12"
                    VerticalAlignment="Center"
                    Margin="12,0,0,0" />
       </StackPanel>
 
-      <Separator Background="#1E293B" Margin="0,16,0,0" />
+      <Separator Background="{DynamicResource AppBorder}" Margin="0,16,0,0" />
       <TextBlock Text="雲端更新"
-                 Foreground="#E2E8F0"
+                 Foreground="{DynamicResource AppText}"
                  FontSize="14"
                  FontWeight="SemiBold"
                  Margin="0,16,0,0" />
       <CheckBox x:Name="AutoCheckUpdatesCheck"
                 Content="啟動時自動檢查更新（一天最多一次）"
-                Foreground="#E2E8F0"
+                Foreground="{DynamicResource AppText}"
                 Margin="0,8,0,0"
                 Checked="AutoCheckUpdates_Changed"
                 Unchecked="AutoCheckUpdates_Changed" />
       <TextBlock x:Name="LastCheckText"
-                 Foreground="#94A3B8"
+                 Foreground="{DynamicResource AppTextMuted}"
                  FontSize="12"
                  TextWrapping="Wrap"
                  Margin="0,6,0,0" />
+
+      <Separator Background="{DynamicResource AppBorder}" Margin="0,16,0,0" />
+      <TextBlock Text="外觀"
+                 Foreground="{DynamicResource AppText}"
+                 FontSize="14"
+                 FontWeight="SemiBold"
+                 Margin="0,16,0,0" />
+      <TextBlock Text="主題"
+                 Foreground="{DynamicResource AppTextMuted}"
+                 FontSize="12"
+                 Margin="0,8,0,0" />
+      <ComboBox x:Name="ThemeBox"
+                DisplayMemberPath="Label"
+                SelectedValuePath="Value"
+                Margin="0,6,0,0"
+                SelectionChanged="Theme_Changed" />
       </StackPanel>
     </ScrollViewer>
 
@@ -146,23 +162,23 @@
                 Orientation="Horizontal"
                 HorizontalAlignment="Right">
       <TextBlock x:Name="VersionText"
-                 Foreground="#94A3B8"
+                 Foreground="{DynamicResource AppTextMuted}"
                  FontSize="12"
                  VerticalAlignment="Center"
                  Margin="0,0,14,0" />
       <Button Content="檢查更新"
               Padding="14,7"
               Margin="0,0,8,0"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="CheckUpdates_Click" />
       <Button Content="關閉"
               Width="110"
               Padding="0,7"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="Close_Click" />
     </StackPanel>
   </Grid>

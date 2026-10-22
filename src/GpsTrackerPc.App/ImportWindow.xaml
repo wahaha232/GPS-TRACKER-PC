@@ -7,7 +7,7 @@
         MinWidth="820"
         MinHeight="560"
         WindowStartupLocation="CenterOwner"
-        Background="#0B1220"
+        Background="{DynamicResource AppBackground}"
         AllowDrop="True"
         DragOver="Window_DragOver"
         Drop="Window_Drop"
@@ -23,22 +23,22 @@
 
     <StackPanel Grid.Row="0">
       <TextBlock Text="GPX 匯入"
-                 Foreground="#E2E8F0"
+                 Foreground="{DynamicResource AppText}"
                  FontSize="20"
                  FontWeight="SemiBold" />
-      <Border Background="#3B1D1D"
-              BorderBrush="#7F1D1D"
+      <Border Background="{DynamicResource AppDangerSurface}"
+              BorderBrush="{DynamicResource AppDangerBorder}"
               BorderThickness="1"
               CornerRadius="6"
               Padding="12,9"
               Margin="0,10,0,0">
         <TextBlock Text="⚠️ 匯入的軌跡會寫入公開的 GitHub 倉庫，任何人都看得到路線（包含起點與終點）。步數不會匯入。"
-                   Foreground="#FCA5A5"
+                   Foreground="{DynamicResource AppDangerText}"
                    FontSize="12"
                    TextWrapping="Wrap" />
       </Border>
       <TextBlock x:Name="TokenStatusText"
-                 Foreground="#94A3B8"
+                 Foreground="{DynamicResource AppTextMuted}"
                  FontSize="12"
                  Margin="0,8,0,0" />
     </StackPanel>
@@ -49,17 +49,17 @@
       <Button x:Name="AddFilesButton"
               Content="選擇 GPX 檔"
               Padding="14,6"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="AddFiles_Click" />
       <TextBlock Text="也可以把 .gpx 拖進這個視窗"
-                 Foreground="#64748B"
+                 Foreground="{DynamicResource AppTextMuted}"
                  FontSize="12"
                  VerticalAlignment="Center"
                  Margin="12,0,0,0" />
       <TextBlock Text="移動方式"
-                 Foreground="#94A3B8"
+                 Foreground="{DynamicResource AppTextMuted}"
                  FontSize="12"
                  VerticalAlignment="Center"
                  Margin="28,0,8,0" />
@@ -67,17 +67,17 @@
                 Width="170"
                 DisplayMemberPath="Label"
                 SelectedValuePath="Value"
-                Background="#0F172A"
-                Foreground="#E2E8F0"
-                BorderBrush="#334155" />
+                Background="{DynamicResource AppSurfaceAlt}"
+                Foreground="{DynamicResource AppText}"
+                BorderBrush="{DynamicResource AppBorderStrong}" />
     </StackPanel>
 
     <ListView x:Name="FileList"
               Grid.Row="2"
               ItemsSource="{Binding Rows}"
-              Background="#0F172A"
-              Foreground="#E2E8F0"
-              BorderBrush="#1E293B"
+              Background="{DynamicResource AppSurfaceAlt}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorder}"
               ScrollViewer.HorizontalScrollBarVisibility="Auto">
       <ListView.View>
         <GridView>
@@ -98,10 +98,10 @@
                    Height="7"
                    Minimum="0"
                    Maximum="1"
-                   Background="#1E293B"
-                   Foreground="#38BDF8" />
+                   Background="{DynamicResource AppBorder}"
+                   Foreground="{DynamicResource AppAccent}" />
       <TextBlock x:Name="StatusText"
-                 Foreground="#94A3B8"
+                 Foreground="{DynamicResource AppTextMuted}"
                  FontSize="12"
                  Margin="0,8,0,0"
                  TextWrapping="Wrap" />
@@ -114,17 +114,17 @@
       <Button x:Name="ImportButton"
               Content="開始匯入"
               Padding="16,7"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="StartImport_Click" />
       <Button x:Name="CloseButton"
               Content="關閉"
               Padding="16,7"
               Margin="8,0,0,0"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="Close_Click" />
     </StackPanel>
   </Grid>

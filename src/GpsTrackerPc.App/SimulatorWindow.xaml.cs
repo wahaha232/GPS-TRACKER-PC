@@ -55,6 +55,7 @@ public partial class SimulatorWindow : Window
     private bool _followEnabled = true;
     private ViewportBounds? _viewport;
     private Coordinates? _lastPlaybackCoordinate;
+    private bool _hasUnsavedChanges;
 
     public SimulatorWindow(TokenStore tokenStore, DeviceNameStore deviceNameStore)
     {
@@ -213,6 +214,7 @@ public partial class SimulatorWindow : Window
                         _route.MoveWaypoint(id, new Coordinates(lat, lon)))
                     {
                         _selectedWaypointId = id;
+                        _hasUnsavedChanges = true;
                         RefreshWaypointList(id);
                         SendRoute();
                     }
@@ -245,6 +247,7 @@ public partial class SimulatorWindow : Window
         try
         {
             _selectedWaypointId = _route.AddWaypoint(new Coordinates(latitude, longitude));
+            _hasUnsavedChanges = true;
             RefreshWaypointList(_selectedWaypointId);
             RefreshTimingControls();
             SendRoute();
@@ -413,6 +416,7 @@ public partial class SimulatorWindow : Window
         if (!_updatingUi)
         {
             _route.Name = RouteNameBox.Text;
+            _hasUnsavedChanges = true;
         }
     }
 
@@ -425,6 +429,7 @@ public partial class SimulatorWindow : Window
 
         _route.Loop = LoopCheck.IsChecked == true;
         _route.NaturalSpeed = NaturalCheck.IsChecked == true;
+        _hasUnsavedChanges = true;
         try
         {
             _route.SetUseGpxTiming(TimingCheck.IsChecked == true);
@@ -474,6 +479,7 @@ public partial class SimulatorWindow : Window
         try
         {
             _route.SetSpeed(speed);
+            _hasUnsavedChanges = true;
             SpeedBox.Text = FormatSpeed(_route.SpeedKph);
             SetStatus($"速度設為 {FormatSpeed(_route.SpeedKph)} km/h。");
         }
@@ -520,6 +526,7 @@ public partial class SimulatorWindow : Window
         try
         {
             _route.SetWaypointStop(_selectedWaypointId, seconds);
+            _hasUnsavedChanges = true;
             RefreshWaypointList(_selectedWaypointId);
             SendRoute();
             SetStatus($"已把停留時間設為 {seconds} 秒。");
@@ -551,6 +558,7 @@ public partial class SimulatorWindow : Window
             return;
         }
 
+        _hasUnsavedChanges = true;
         RefreshAllUi(updateName: false);
         SendRoute();
     }
@@ -570,6 +578,7 @@ public partial class SimulatorWindow : Window
             return;
         }
 
+        _hasUnsavedChanges = true;
         _selectedWaypointId = _route.Waypoints.Count == 0
             ? null
             : _route.Waypoints[Math.Clamp(index, 0, _route.Waypoints.Count - 1)].Id;
@@ -598,6 +607,7 @@ public partial class SimulatorWindow : Window
         try
         {
             _route.AddOutage(start, duration);
+            _hasUnsavedChanges = true;
             RefreshOutageList();
             OutageStartBox.Clear();
             OutageDurationBox.Clear();
@@ -618,6 +628,7 @@ public partial class SimulatorWindow : Window
         }
 
         _route.RemoveOutage(row.Outage);
+        _hasUnsavedChanges = true;
         RefreshOutageList();
         SetStatus("已刪除 GPS 中斷。");
     }
@@ -755,6 +766,7 @@ public partial class SimulatorWindow : Window
                 new Random(),
                 $"隨機路線 {DateTime.Now:MMdd-HHmm}");
             _selectedWaypointId = null;
+            _hasUnsavedChanges = true;
             RefreshAllUi(updateName: true);
             SendRoute();
             PostFit();
@@ -784,6 +796,7 @@ public partial class SimulatorWindow : Window
 
         _route.Reset();
         _selectedWaypointId = null;
+        _hasUnsavedChanges = false;
         RefreshAllUi(updateName: true);
         SendRoute();
         SetStatus("已建立新路線。");
@@ -796,6 +809,7 @@ public partial class SimulatorWindow : Window
         {
             var route = _route.ToRoute();
             _library.Save(route);
+            _hasUnsavedChanges = false;
             SetStatus($"已儲存「{route.Name}」（{route.Waypoints.Count} 點）。");
         }
         catch (Exception ex)
@@ -814,6 +828,7 @@ public partial class SimulatorWindow : Window
         {
             _route.ReplaceRoute(window.SelectedRoute);
             _selectedWaypointId = null;
+            _hasUnsavedChanges = false;
             RefreshAllUi(updateName: true);
             SendRoute();
             PostFit();
@@ -846,6 +861,7 @@ public partial class SimulatorWindow : Window
 
             _route.ReplaceRoute(imported.Route);
             _selectedWaypointId = _route.Waypoints.Count > 0 ? _route.Waypoints[0].Id : null;
+            _hasUnsavedChanges = true;
             RefreshAllUi(updateName: true);
             SendRoute();
             PostFit();
@@ -1522,8 +1538,50 @@ public partial class SimulatorWindow : Window
             ? value
             : double.NaN;
 
+    private void Locate_Click(object sender, RoutedEventArgs e)
+    {
+        var coordinate = _playback?.Current?.Coordinates ?? _lastPlaybackCoordinate;
+        if (coordinate == null)
+        {
+            SetStatus("目前沒有可定位的播放位置。");
+            return;
+        }
+
+        Post(new
+        {
+            type = "locatePosition",
+            lat = coordinate.Latitude,
+            lon = coordinate.Longitude,
+        });
+        SetStatus("已定位到目前位置。");
+    }
+
+    private void BackToHome_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+        if (!IsVisible && Owner is Window owner)
+        {
+            owner.Activate();
+        }
+    }
+
     private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        if (_hasUnsavedChanges)
+        {
+            var answer = MessageBox.Show(
+                this,
+                "目前路線尚未儲存，關閉後變更會消失。\n\n確定要關閉嗎？",
+                "尚未儲存",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (answer != MessageBoxResult.Yes)
+            {
+                e.Cancel = true;
+                return;
+            }
+        }
+
         _playbackTimer.Stop();
         _playbackWatch.Reset();
         _playback?.Stop();

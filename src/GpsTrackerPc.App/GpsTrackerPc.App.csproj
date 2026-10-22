@@ -6,6 +6,7 @@
     <UseWPF>true</UseWPF>
     <RootNamespace>GpsTrackerPc.App</RootNamespace>
     <AssemblyName>GpsTrackerPc</AssemblyName>
+    <ApplicationIcon>Assets\GpsTrackerPc.ico</ApplicationIcon>
     <Version>0.2.1</Version>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -14,6 +15,10 @@
          本機預設是本專案往上三層的 ANDROID-APP-DEV\gpstracker-web；GitHub Actions 會用 -p:WebSourceRoot 覆寫。 -->
     <WebSourceRoot Condition="'$(WebSourceRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\ANDROID-APP-DEV\gpstracker-web\</WebSourceRoot>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\GpsTrackerPc.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />

@@ -21,6 +21,8 @@ internal static class AppPaths
 
     public static string UpdateCheckFile => Path.Combine(Root, "update-check.json");
 
+    public static string ThemeFile => Path.Combine(Root, "theme.json");
+
     public static string FavoritesFile => Path.Combine(Root, "favorites.json");
 
     public static string RoutesDirectory => Path.Combine(Root, "routes");

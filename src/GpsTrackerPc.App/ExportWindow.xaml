@@ -7,7 +7,7 @@
         MinWidth="760"
         MinHeight="480"
         WindowStartupLocation="CenterOwner"
-        Background="#0B1220">
+        Background="{DynamicResource AppBackground}">
   <Grid Margin="18">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
@@ -19,11 +19,11 @@
 
     <StackPanel Grid.Row="0">
       <TextBlock Text="GPX 匯出"
-                 Foreground="#E2E8F0"
+                 Foreground="{DynamicResource AppText}"
                  FontSize="20"
                  FontWeight="SemiBold" />
       <TextBlock Text="從本機同步的紀錄挑選一筆或多筆，選一個資料夾後一次全部存成 &lt;trackId&gt;.gpx。"
-                 Foreground="#94A3B8"
+                 Foreground="{DynamicResource AppTextMuted}"
                  FontSize="12"
                  Margin="0,6,0,0" />
     </StackPanel>
@@ -33,19 +33,19 @@
                 Margin="0,14,0,10">
       <Button Content="全選"
               Padding="12,5"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="SelectAll_Click" />
       <Button Content="全不選"
               Padding="12,5"
               Margin="8,0,0,0"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="SelectNone_Click" />
       <TextBlock x:Name="CountText"
-                 Foreground="#94A3B8"
+                 Foreground="{DynamicResource AppTextMuted}"
                  FontSize="12"
                  VerticalAlignment="Center"
                  Margin="14,0,0,0" />
@@ -54,9 +54,9 @@
     <ListView x:Name="RecordList"
               Grid.Row="2"
               ItemsSource="{Binding Records}"
-              Background="#0F172A"
-              Foreground="#E2E8F0"
-              BorderBrush="#1E293B"
+              Background="{DynamicResource AppSurfaceAlt}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorder}"
               ScrollViewer.HorizontalScrollBarVisibility="Auto">
       <ListView.View>
         <GridView>
@@ -84,10 +84,10 @@
                    Height="7"
                    Minimum="0"
                    Maximum="1"
-                   Background="#1E293B"
-                   Foreground="#38BDF8" />
+                   Background="{DynamicResource AppBorder}"
+                   Foreground="{DynamicResource AppAccent}" />
       <TextBlock x:Name="StatusText"
-                 Foreground="#94A3B8"
+                 Foreground="{DynamicResource AppTextMuted}"
                  FontSize="12"
                  Margin="0,8,0,0"
                  TextWrapping="Wrap" />
@@ -100,17 +100,17 @@
       <Button x:Name="ExportButton"
               Content="選擇資料夾並匯出"
               Padding="16,7"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="Export_Click" />
       <Button x:Name="CloseButton"
               Content="關閉"
               Padding="16,7"
               Margin="8,0,0,0"
-              Background="#1E293B"
-              Foreground="#E2E8F0"
-              BorderBrush="#334155"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
               Click="Close_Click" />
     </StackPanel>
   </Grid>
