@@ -170,6 +170,8 @@ public sealed class UpdateService
                 throw new UpdateException($"下載更新失敗（HTTP {(int)response.StatusCode}）");
             }
 
+            EnsureAllowedDownloadResponse(response);
+
             var contentLength = response.Content.Headers.ContentLength;
             if (contentLength is { } length && length > MaxAssetBytes)
             {
@@ -244,6 +246,8 @@ public sealed class UpdateService
             throw new UpdateException($"下載 SHA-256 檢查碼失敗（HTTP {(int)response.StatusCode}）");
         }
 
+        EnsureAllowedDownloadResponse(response);
+
         var text = await ReadBoundedAsync(response, MaxChecksumBytes, cancellationToken).ConfigureAwait(false);
         var match = Sha256Pattern.Match(text);
         if (!match.Success)
@@ -253,6 +257,28 @@ public sealed class UpdateService
 
         return match.Value.ToLowerInvariant();
     }
+
+    /// <summary>
+    /// 允許 GitHub 把 Releases 檔案轉到 objects.githubusercontent.com 等下載伺服器；
+    /// 轉到其他網域就拒絕。假的 handler 沒有 RequestMessage 時，初始網址已經檢查過，直接放行。
+    /// </summary>
+    private static void EnsureAllowedDownloadResponse(HttpResponseMessage response)
+    {
+        var finalUri = response.RequestMessage?.RequestUri;
+        if (finalUri == null)
+        {
+            return;
+        }
+
+        if (!IsAllowedDownloadHost(finalUri.Host))
+        {
+            throw new UpdateException($"下載被重新導向到不允許的網域：{finalUri.Host}");
+        }
+    }
+
+    private static bool IsAllowedDownloadHost(string host) =>
+        string.Equals(host, "github.com", StringComparison.OrdinalIgnoreCase) ||
+        host.EndsWith(".githubusercontent.com", StringComparison.OrdinalIgnoreCase);
 
     private async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,

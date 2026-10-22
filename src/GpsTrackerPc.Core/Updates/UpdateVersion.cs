@@ -10,6 +10,9 @@ public static class UpdateVersion
     public const string DownloadPrefix =
         "https://github.com/" + Repo + "/releases/download/";
 
+    private const string DownloadPathPrefix =
+        "/wahaha232/GPS-TRACKER-PC/releases/download/";
+
     private static readonly Regex VersionPattern = new(
         @"(\d+)\.(\d+)\.(\d+)",
         RegexOptions.Compiled);
@@ -54,7 +57,57 @@ public static class UpdateVersion
         return false;
     }
 
-    public static bool IsSafeDownloadUrl(string? url) =>
-        !string.IsNullOrWhiteSpace(url) &&
-        url.StartsWith(DownloadPrefix, StringComparison.Ordinal);
+    /// <summary>
+    /// 只接受 GitHub Releases 的單一標籤／檔名路徑。
+    /// 先看原始字串阻擋 ../ 與編碼點，再用 Uri 正規化後的 Host／Path 檢查，
+    /// 不依賴 Uri 對路徑的合併結果。
+    /// </summary>
+    public static bool IsSafeDownloadUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return false;
+        }
+
+        // 不依賴 Uri 正規化：原始字串出現任何點點或編碼點就直接拒絕。
+        if (url.Contains("..", StringComparison.Ordinal) ||
+            url.Contains("%2e", StringComparison.OrdinalIgnoreCase) ||
+            url.Contains("%2f", StringComparison.OrdinalIgnoreCase) ||
+            url.Contains("%5c", StringComparison.OrdinalIgnoreCase) ||
+            url.Contains('\\'))
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase) ||
+            !string.IsNullOrEmpty(uri.UserInfo) ||
+            !uri.IsDefaultPort)
+        {
+            return false;
+        }
+
+        var path = uri.AbsolutePath;
+        if (!path.StartsWith(DownloadPathPrefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var remaining = path[DownloadPathPrefix.Length..];
+        var segments = remaining.Split('/');
+        if (segments.Length != 2)
+        {
+            return false;
+        }
+
+        return segments.All(segment =>
+            segment.Length > 0 &&
+            segment != "." &&
+            segment != "..");
+    }
 }

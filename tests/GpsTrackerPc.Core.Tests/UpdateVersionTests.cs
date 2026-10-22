@@ -27,16 +27,37 @@ public class UpdateVersionTests
     }
 
     [Fact]
-    public void OnlyGitHubReleaseDownloadUrlsAreAllowed()
+    public void SafeDownloadUrlAcceptsExeAndChecksumOnGithub()
     {
         Assert.True(UpdateVersion.IsSafeDownloadUrl(
-            "https://github.com/wahaha232/GPS-TRACKER-PC/releases/download/gpstracker-desktop-latest/GpsTrackerPc.zip"));
-        Assert.False(UpdateVersion.IsSafeDownloadUrl(
-            "https://evil.example/GpsTrackerPc.zip"));
-        Assert.False(UpdateVersion.IsSafeDownloadUrl(
-            "http://github.com/wahaha232/GPS-TRACKER-PC/releases/download/x.zip"));
-        Assert.False(UpdateVersion.IsSafeDownloadUrl(
-            "https://github.com/wahaha232/OTHER/releases/download/x.zip"));
+            "https://github.com/wahaha232/GPS-TRACKER-PC/releases/download/gpstracker-desktop-latest/GpsTrackerPc.exe"));
+        Assert.True(UpdateVersion.IsSafeDownloadUrl(
+            "https://GITHUB.com/wahaha232/GPS-TRACKER-PC/releases/download/gpstracker-desktop-latest/GpsTrackerPc.exe.sha256"));
+    }
+
+    [Fact]
+    public void SafeDownloadUrlRejectsTraversalEncodedDotsAndUnsafeParts()
+    {
+        var unsafeUrls = new[]
+        {
+            "https://github.com/wahaha232/GPS-TRACKER-PC/releases/download/../../../other/repo/releases/download/x/evil.exe",
+            "https://github.com/wahaha232/GPS-TRACKER-PC/releases/download/x/%2e%2e/evil.exe",
+            "https://github.com/wahaha232/GPS-TRACKER-PC/releases/download/x/%2E%2E/evil.exe",
+            "http://github.com/wahaha232/GPS-TRACKER-PC/releases/download/x/a.exe",
+            "https://github.com.evil.com/wahaha232/GPS-TRACKER-PC/releases/download/x/a.exe",
+            "https://user@github.com/wahaha232/GPS-TRACKER-PC/releases/download/x/a.exe",
+            "https://github.com:8443/wahaha232/GPS-TRACKER-PC/releases/download/x/a.exe",
+            "https://github.com/wahaha232/GPS-TRACKER-PC-evil/releases/download/x/a.exe",
+            "https://github.com/wahaha232/GPS-TRACKER-PC/releases/download/gpstracker-desktop-latest",
+            "https://github.com/wahaha232/GPS-TRACKER-PC/releases/download/x/a/b.exe",
+            "https://github.com/wahaha232/GPS-TRACKER-PC/releases/download/x/",
+            "https://github.com/wahaha232/GPS-TRACKER-PC/releases/download//a.exe",
+            "https://github.com/wahaha232/OTHER/releases/download/x/a.exe",
+            "",
+            "not a url",
+        };
+
+        Assert.All(unsafeUrls, url => Assert.False(UpdateVersion.IsSafeDownloadUrl(url)));
         Assert.False(UpdateVersion.IsSafeDownloadUrl(null));
     }
 }

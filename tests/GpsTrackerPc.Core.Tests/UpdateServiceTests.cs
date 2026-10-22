@@ -170,6 +170,44 @@ public class UpdateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task DownloadAllowsObjectsGitHubUserContentRedirect()
+    {
+        var content = Encoding.UTF8.GetBytes("new build contents");
+        var hash = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
+        var handler = new FakeHandler();
+        handler.Routes[ZipUrl] = () => BinaryResponse(
+            content,
+            "https://objects.githubusercontent.com/github-production-release-asset/GpsTrackerPc.exe");
+        handler.Routes[ShaUrl] = () => TextResponse($"{hash}  GpsTrackerPc.exe");
+        var service = new UpdateService(new HttpClient(handler));
+        var destination = Path.Combine(_root, "update.exe");
+
+        await service.DownloadAsync(CreateUpdate(content.Length), destination);
+
+        Assert.Equal(content, File.ReadAllBytes(destination));
+    }
+
+    [Fact]
+    public async Task DownloadRejectsRedirectOutsideGitHubAndWritesNothing()
+    {
+        var content = Encoding.UTF8.GetBytes("tampered contents");
+        var handler = new FakeHandler();
+        handler.Routes[ZipUrl] = () => BinaryResponse(
+            content,
+            "https://evil.example/payload.exe");
+        var service = new UpdateService(new HttpClient(handler));
+        var destination = Path.Combine(_root, "update.exe");
+
+        var error = await Assert.ThrowsAsync<UpdateException>(() =>
+            service.DownloadAsync(CreateUpdate(content.Length), destination));
+
+        Assert.Contains("不允許的網域", error.Message);
+        Assert.False(File.Exists(destination));
+        Assert.False(File.Exists(destination + ".part"));
+        Assert.DoesNotContain(ShaUrl, handler.Requested);
+    }
+
+    [Fact]
     public async Task BadChecksumDeletesDownload()
     {
         var content = Encoding.UTF8.GetBytes("tampered contents");
@@ -274,11 +312,19 @@ public class UpdateServiceTests : IDisposable
             Content = new StringContent(text, Encoding.UTF8, "text/plain"),
         };
 
-    private static HttpResponseMessage BinaryResponse(byte[] bytes) =>
-        new(HttpStatusCode.OK)
+    private static HttpResponseMessage BinaryResponse(byte[] bytes, string? finalUri = null)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = new ByteArrayContent(bytes),
         };
+        if (!string.IsNullOrWhiteSpace(finalUri))
+        {
+            response.RequestMessage = new HttpRequestMessage(HttpMethod.Get, finalUri);
+        }
+
+        return response;
+    }
 
     private sealed class FakeHandler : HttpMessageHandler
     {
