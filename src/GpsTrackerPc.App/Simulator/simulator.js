@@ -97,6 +97,12 @@
     return;
   }
 
+  var MapCore = window.SimulatorMapCore;
+  if (!MapCore) {
+    showError("找不到模擬地圖核心。");
+    return;
+  }
+
   var map;
   try {
     map = new maplibregl.Map({
@@ -123,27 +129,11 @@
   map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
 
   function emptyRoute() {
-    return { type: "FeatureCollection", features: [] };
+    return MapCore.emptyFeatureCollection();
   }
 
   function routeFeature() {
-    var coordinates = routePoints.map(function (point) {
-      return [point.lon, point.lat];
-    });
-    if (routePoints.length > 1 && routeLoop) {
-      coordinates.push([routePoints[0].lon, routePoints[0].lat]);
-    }
-
-    return coordinates.length >= 2
-      ? {
-          type: "FeatureCollection",
-          features: [{
-            type: "Feature",
-            properties: {},
-            geometry: { type: "LineString", coordinates: coordinates }
-          }]
-        }
-      : emptyRoute();
+    return MapCore.routeFeature(routePoints, routeLoop);
   }
 
   function updateRouteSource() {
@@ -152,57 +142,7 @@
   }
 
   function ensureCustomLayers() {
-    if (!map.getSource("route")) {
-      map.addSource("route", { type: "geojson", data: emptyRoute() });
-    }
-
-    if (!map.getLayer("route-casing")) {
-      map.addLayer({
-        id: "route-casing",
-        type: "line",
-        source: "route",
-        layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#0b1220", "line-width": 8, "line-opacity": 0.8 }
-      });
-    }
-
-    if (!map.getLayer("route-line")) {
-      map.addLayer({
-        id: "route-line",
-        type: "line",
-        source: "route",
-        layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#38bdf8", "line-width": 4 }
-      });
-    }
-
-    if (!map.getSource("playback")) {
-      map.addSource("playback", { type: "geojson", data: emptyRoute() });
-    }
-
-    if (!map.getLayer("playback-line")) {
-      map.addLayer({
-        id: "playback-line",
-        type: "line",
-        source: "playback",
-        layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#22c55e", "line-width": 5, "line-opacity": 0.95 }
-      });
-    }
-
-    if (!map.getSource("playback-tail")) {
-      map.addSource("playback-tail", { type: "geojson", data: emptyRoute() });
-    }
-
-    if (!map.getLayer("playback-tail-line")) {
-      map.addLayer({
-        id: "playback-tail-line",
-        type: "line",
-        source: "playback-tail",
-        layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#86efac", "line-width": 4, "line-opacity": 0.95 }
-      });
-    }
+    MapCore.ensureCustomLayers(map);
   }
 
   function updateMarkerSelection() {
@@ -350,7 +290,7 @@
       var pin = document.createElement("div");
       pin.className = "playback-pin";
       element.appendChild(pin);
-      playbackMarker = new maplibregl.Marker({ element: element, anchor: "center" })
+      playbackMarker = new maplibregl.Marker({ element: element, anchor: "bottom" })
         .setLngLat([lon, lat])
         .addTo(map);
     } else if (Number.isFinite(lat) && Number.isFinite(lon)) {
@@ -373,6 +313,16 @@
   function appendPlaybackSample(message) {
     if (!Number.isFinite(message.lat) || !Number.isFinite(message.lon)) return;
     var point = [message.lon, message.lat];
+    var lastSegment = playbackSegments[playbackSegments.length - 1];
+    var lastPoint = lastSegment && lastSegment.length
+      ? lastSegment[lastSegment.length - 1]
+      : null;
+
+    if (lastPoint && lastPoint[0] === point[0] && lastPoint[1] === point[1]) {
+      lastPlaybackTime = message.elapsed;
+      updatePlaybackPosition(message);
+      return;
+    }
 
     if (lastPlaybackTime === null || message.elapsed - lastPlaybackTime > 1.5) {
       playbackSegments.push([point]);
@@ -530,6 +480,11 @@
     map.on("click", function (event) {
       if (playbackActive) return;
       post("mapClick", { lat: event.lngLat.lat, lon: event.lngLat.lng });
+    });
+
+    map.on("dragstart", function () {
+      // 使用者自己拖曳地圖就暫停跟隨；按「跟隨」按鈕才會回到大頭針。
+      post("followPaused");
     });
 
     map.on("moveend", function () {

@@ -130,10 +130,16 @@
                     DisplayMemberPath="Label"
                     SelectedValuePath="Value"
                     SelectionChanged="Basemap_Changed" />
-          <CheckBox x:Name="FollowCheck"
-                    Content="跟隨目前位置（只在畫面邊緣時平移）"
-                    Checked="Follow_Changed"
-                    Unchecked="Follow_Changed" />
+          <ToggleButton x:Name="FollowToggle"
+                        Content="跟隨"
+                        HorizontalAlignment="Left"
+                        Padding="14,5"
+                        Margin="0,6,0,0"
+                        Background="#1E293B"
+                        Foreground="#E2E8F0"
+                        BorderBrush="#334155"
+                        Checked="Follow_Changed"
+                        Unchecked="Follow_Changed" />
 
           <StackPanel x:Name="RouteEditPanel">
           <TextBlock Text="路線名稱" Style="{StaticResource Section}" />

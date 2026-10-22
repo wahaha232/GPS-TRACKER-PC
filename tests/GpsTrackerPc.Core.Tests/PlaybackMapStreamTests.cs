@@ -99,6 +99,22 @@ public class PlaybackMapStreamTests
     }
 
     [Fact]
+    public void StayingAtTheSamePositionDoesNotAddRepeatedTrailPoints()
+    {
+        var stream = new PlaybackMapStream();
+        var position = new Coordinates(25.0, 121.5);
+
+        stream.Append(new PlaybackSample(position, 0, 1f, IsInOutage: false));
+        stream.Append(new PlaybackSample(position, 1, 1f, IsInOutage: false));
+        stream.Append(new PlaybackSample(position, 2, 1f, IsInOutage: false));
+
+        var frame = stream.BuildFrame();
+
+        Assert.Single(frame.Samples);
+        Assert.Equal(1, stream.DisplayPointCount);
+    }
+
+    [Fact]
     public void GapsBecomeSeparateDisplaySegments()
     {
         var stream = new PlaybackMapStream();

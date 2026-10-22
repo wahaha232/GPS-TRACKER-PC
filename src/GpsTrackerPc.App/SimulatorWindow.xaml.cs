@@ -54,6 +54,7 @@ public partial class SimulatorWindow : Window
     private BasemapOption _basemap = BasemapCatalog.Default;
     private bool _followEnabled = true;
     private ViewportBounds? _viewport;
+    private Coordinates? _lastPlaybackCoordinate;
 
     public SimulatorWindow(TokenStore tokenStore, DeviceNameStore deviceNameStore)
     {
@@ -80,7 +81,7 @@ public partial class SimulatorWindow : Window
         RouteNameBox.Text = _route.Name;
         BasemapBox.ItemsSource = BasemapCatalog.Options;
         BasemapBox.SelectedValue = _basemap.Value;
-        FollowCheck.IsChecked = _followEnabled;
+        FollowToggle.IsChecked = _followEnabled;
         _updatingUi = false;
 
         RefreshAllUi(updateName: false);
@@ -169,6 +170,13 @@ public partial class SimulatorWindow : Window
                     break;
                 case "center":
                     ReadCenter(root);
+                    break;
+                case "followPaused":
+                    _followEnabled = false;
+                    _updatingUi = true;
+                    FollowToggle.IsChecked = false;
+                    _updatingUi = false;
+                    SaveMapSettings();
                     break;
                 case "viewport":
                 {
@@ -349,6 +357,7 @@ public partial class SimulatorWindow : Window
         if (_playback == null || _playback.State is PlaybackState.Stopped or PlaybackState.Completed)
         {
             _lastPlayback = null;
+            _lastPlaybackCoordinate = null;
             UploadRecordButton.IsEnabled = false;
         }
 
@@ -939,6 +948,7 @@ public partial class SimulatorWindow : Window
         controller.Start();
         _playback = controller;
         _lastPlayback = null;
+        _lastPlaybackCoordinate = controller.Current?.Coordinates;
         _mapStream = new PlaybackMapStream();
         _pendingFullFrame = null;
         _sentSampleCount = 0;
@@ -1050,6 +1060,8 @@ public partial class SimulatorWindow : Window
             var result = await Task.Run(() => PlaybackController.GenerateDirect(route, laps));
             _playback = null;
             _lastPlayback = result;
+            _lastPlaybackCoordinate = result.Samples.LastOrDefault()?.Coordinates
+                ?? route.Waypoints[^1].Coordinates;
             _sentSampleCount = 0;
             _mapStream = new PlaybackMapStream();
             foreach (var sample in result.Samples)
@@ -1247,6 +1259,7 @@ public partial class SimulatorWindow : Window
             return;
         }
 
+        _lastPlaybackCoordinate = current.Coordinates;
         Post(new
         {
             type = "playbackPosition",
@@ -1352,8 +1365,22 @@ public partial class SimulatorWindow : Window
             return;
         }
 
-        _followEnabled = FollowCheck.IsChecked == true;
+        _followEnabled = FollowToggle.IsChecked == true;
         SaveMapSettings();
+
+        if (_followEnabled)
+        {
+            var coordinate = _playback?.Current?.Coordinates ?? _lastPlaybackCoordinate;
+            if (coordinate != null)
+            {
+                Post(new
+                {
+                    type = "followPan",
+                    lat = coordinate.Latitude,
+                    lon = coordinate.Longitude,
+                });
+            }
+        }
     }
 
     private void SaveMapSettings()

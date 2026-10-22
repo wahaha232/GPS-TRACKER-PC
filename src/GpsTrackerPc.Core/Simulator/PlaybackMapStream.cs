@@ -43,6 +43,14 @@ public sealed class PlaybackMapStream
     {
         ArgumentNullException.ThrowIfNull(sample);
 
+        // 停留點或暫停時位置不變，不要一直往顯示軌跡加同一個點。
+        if (_segments.Count > 0 &&
+            _segments[^1].Count > 0 &&
+            _segments[^1][^1].Coordinates == sample.Coordinates)
+        {
+            return;
+        }
+
         if (_segments.Count == 0 ||
             sample.ElapsedSeconds - _segments[^1][^1].ElapsedSeconds > PlaybackMapPolicy.TrailGapSeconds)
         {
