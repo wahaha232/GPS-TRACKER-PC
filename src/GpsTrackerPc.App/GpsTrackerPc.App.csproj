@@ -18,6 +18,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\GpsTrackerPc.Core\GpsTrackerPc.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="$(WebSourceRoot)**\*.*">
       <Link>web\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

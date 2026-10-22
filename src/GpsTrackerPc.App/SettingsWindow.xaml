@@ -1,0 +1,103 @@
+<Window x:Class="GpsTrackerPc.App.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="設定"
+        Width="660"
+        Height="470"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="#0B1220">
+  <Grid Margin="24">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <StackPanel Grid.Row="0">
+      <TextBlock Text="GitHub Token"
+                 Foreground="#E2E8F0"
+                 FontSize="20"
+                 FontWeight="SemiBold" />
+      <TextBlock x:Name="TokenStatusText"
+                 Foreground="#94A3B8"
+                 FontSize="13"
+                 Margin="0,6,0,0" />
+      <TextBlock Text="Token 只用來編輯／上傳紀錄，會以 Windows DPAPI（CurrentUser）加密後存在本機；畫面不會顯示內容，也不會寫進程式碼或記錄檔。"
+                 Foreground="#94A3B8"
+                 FontSize="12"
+                 TextWrapping="Wrap"
+                 Margin="0,8,0,0" />
+    </StackPanel>
+
+    <PasswordBox x:Name="TokenBox"
+                 Grid.Row="1"
+                 Height="34"
+                 Margin="0,16,0,0"
+                 Padding="8,6"
+                 Background="#0F172A"
+                 Foreground="#E2E8F0"
+                 BorderBrush="#334155"
+                 PasswordChar="●" />
+
+    <StackPanel Grid.Row="2"
+                Orientation="Horizontal"
+                Margin="0,12,0,0">
+      <Button Content="儲存 Token"
+              Padding="14,6"
+              Background="#1E293B"
+              Foreground="#E2E8F0"
+              BorderBrush="#334155"
+              Click="Save_Click" />
+      <Button Content="刪除 Token"
+              Padding="14,6"
+              Margin="8,0,0,0"
+              Background="#1E293B"
+              Foreground="#E2E8F0"
+              BorderBrush="#334155"
+              Click="Delete_Click" />
+    </StackPanel>
+
+    <StackPanel Grid.Row="3"
+                Margin="0,24,0,0">
+      <Separator Background="#1E293B" />
+      <TextBlock Text="本機資料夾"
+                 Foreground="#E2E8F0"
+                 FontSize="14"
+                 FontWeight="SemiBold"
+                 Margin="0,16,0,0" />
+      <TextBlock Text="從 GitHub 同步下來的 manifest.json、紀錄檔與 meta.json 都放在這裡；沒有網路時網頁會讀這份資料。"
+                 Foreground="#94A3B8"
+                 FontSize="12"
+                 TextWrapping="Wrap"
+                 Margin="0,6,0,0" />
+      <TextBox x:Name="DataPathText"
+               IsReadOnly="True"
+               Margin="0,10,0,0"
+               Padding="8,6"
+               Background="#0F172A"
+               Foreground="#E2E8F0"
+               BorderBrush="#334155" />
+      <Button Content="開啟資料夾"
+              HorizontalAlignment="Left"
+              Padding="14,6"
+              Margin="0,10,0,0"
+              Background="#1E293B"
+              Foreground="#E2E8F0"
+              BorderBrush="#334155"
+              Click="OpenFolder_Click" />
+    </StackPanel>
+
+    <Button Grid.Row="4"
+            Content="關閉"
+            Width="110"
+            Padding="0,7"
+            HorizontalAlignment="Right"
+            Background="#1E293B"
+            Foreground="#E2E8F0"
+            BorderBrush="#334155"
+            Click="Close_Click" />
+  </Grid>
+</Window>
