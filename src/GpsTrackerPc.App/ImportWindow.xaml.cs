@@ -7,6 +7,7 @@ using System.Windows.Media;
 using GpsTrackerPc.App.Infrastructure;
 using GpsTrackerPc.Core.Gpx;
 using GpsTrackerPc.Core.Security;
+using GpsTrackerPc.Core.Simulator;
 using Microsoft.Win32;
 
 namespace GpsTrackerPc.App;
@@ -15,14 +16,19 @@ namespace GpsTrackerPc.App;
 public partial class ImportWindow : Window
 {
     private readonly TokenStore _tokenStore;
+    private readonly DeviceNameStore _deviceNameStore;
     private readonly GitHubRecordUploader _uploader;
     private CancellationTokenSource? _cts;
     private bool _importing;
 
-    public ImportWindow(TokenStore tokenStore, GitHubRecordUploader uploader)
+    public ImportWindow(
+        TokenStore tokenStore,
+        DeviceNameStore deviceNameStore,
+        GitHubRecordUploader uploader)
     {
         InitializeComponent();
         _tokenStore = tokenStore;
+        _deviceNameStore = deviceNameStore;
         _uploader = uploader;
         DataContext = this;
 
@@ -187,16 +193,20 @@ public partial class ImportWindow : Window
         }
 
         var mode = ModeBox.SelectedValue as string ?? "UNKNOWN";
+        var deviceName = _deviceNameStore.Load();
         var candidates = validRows
-            .Select(row => new GpxImportCandidate(
-                row.FileName,
-                GpxTrackBuilder.Build(
+            .Select(row =>
+            {
+                var build = GpxTrackBuilder.Build(
                     row.Parsed,
                     new GpxBuildOptions
                     {
                         Id = row.TrackId,
                         Mode = mode,
-                    })))
+                    });
+                RecordDeviceNaming.ApplyDeviceName(build, deviceName);
+                return new GpxImportCandidate(row.FileName, build);
+            })
             .ToList();
 
         _importing = true;

@@ -13,18 +13,21 @@ public partial class SimulatedUploadWindow : Window
     private readonly PlaybackResult _playback;
     private readonly TokenStore _tokenStore;
     private readonly GitHubRecordUploader _uploader;
+    private readonly string _deviceName;
     private readonly string _trackId = Guid.NewGuid().ToString();
     private bool _busy;
 
     public SimulatedUploadWindow(
         PlaybackResult playback,
         TokenStore tokenStore,
-        HttpClient httpClient)
+        HttpClient httpClient,
+        string deviceName)
     {
         InitializeComponent();
         _playback = playback;
         _tokenStore = tokenStore;
         _uploader = new GitHubRecordUploader(httpClient, tokenStore);
+        _deviceName = DeviceNameStore.Validate(deviceName);
         StartTimeBox.Text = DateTimeOffset.Now.ToString("yyyy/MM/dd HH:mm:ss", CultureInfo.InvariantCulture);
         RefreshSummary();
     }
@@ -54,7 +57,7 @@ public partial class SimulatedUploadWindow : Window
             return;
         }
 
-        var build = SimulatedRecordBuilder.Build(_playback, startTime, _trackId);
+        var build = SimulatedRecordBuilder.Build(_playback, startTime, _deviceName, _trackId);
         if (!build.IsSuccess)
         {
             SummaryText.Text = "無法轉成紀錄：" + GpxErrors.Get(build.Error!);
@@ -69,7 +72,7 @@ public partial class SimulatedUploadWindow : Window
             $"距離：{(track.DistanceMeters / 1000.0).ToString("0.00", CultureInfo.InvariantCulture)} km\n" +
             $"時間：{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}\n" +
             $"點數：{track.GpsPointCount}\n" +
-            $"裝置：PC\n" +
+            $"裝置：{_deviceName}\n" +
             $"來源：simulated（模擬）" +
             (_playback.Completed ? string.Empty : "\n狀態：未完成（播放中途停止）");
 
@@ -99,7 +102,7 @@ public partial class SimulatedUploadWindow : Window
             return;
         }
 
-        var build = SimulatedRecordBuilder.Build(_playback, startTime, _trackId);
+        var build = SimulatedRecordBuilder.Build(_playback, startTime, _deviceName, _trackId);
         if (!build.IsSuccess)
         {
             StatusText.Text = "無法轉成紀錄：" + GpxErrors.Get(build.Error!);

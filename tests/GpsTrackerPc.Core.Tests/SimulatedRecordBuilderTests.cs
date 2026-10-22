@@ -15,7 +15,7 @@ public class SimulatedRecordBuilderTests
     public void OutageSamplesAreExcludedAndPcMetadataIsAdded()
     {
         var playback = CreatePlayback();
-        var result = SimulatedRecordBuilder.Build(playback, StartTime, id: "sim-track");
+        var result = SimulatedRecordBuilder.Build(playback, StartTime, "PC", id: "sim-track");
 
         Assert.True(result.IsSuccess);
         var track = result.Track!;
@@ -36,7 +36,7 @@ public class SimulatedRecordBuilderTests
     public void StatisticsFollowGpxTrackBuilderRules()
     {
         var playback = CreatePlayback();
-        var result = SimulatedRecordBuilder.Build(playback, StartTime, id: "sim-track");
+        var result = SimulatedRecordBuilder.Build(playback, StartTime, "PC", id: "sim-track");
 
         var filtered = playback.Samples
             .Where(sample => !sample.IsInOutage)
@@ -83,7 +83,7 @@ public class SimulatedRecordBuilderTests
             Completed: true,
             LapsCompleted: 0);
 
-        var result = SimulatedRecordBuilder.Build(playback, StartTime, id: "late-start");
+        var result = SimulatedRecordBuilder.Build(playback, StartTime, "PC", id: "late-start");
 
         Assert.True(result.IsSuccess);
         Assert.Equal(StartTime.ToUnixTimeMilliseconds(), result.Track!.StartTimeMs);
@@ -95,7 +95,7 @@ public class SimulatedRecordBuilderTests
     [Fact]
     public void JsonContainsDeviceAndSourceOnTrackAndManifestEntry()
     {
-        var result = SimulatedRecordBuilder.Build(CreatePlayback(), StartTime, id: "sim-track");
+        var result = SimulatedRecordBuilder.Build(CreatePlayback(), StartTime, "PC", id: "sim-track");
 
         var trackJson = GpxJson.SerializeTrack(result.Track!);
         var entryJson = GpxJson.SerializeEntry(result.Entry!);
@@ -121,7 +121,7 @@ public class SimulatedRecordBuilderTests
             true,
             0);
 
-        var result = SimulatedRecordBuilder.Build(sampling, StartTime);
+        var result = SimulatedRecordBuilder.Build(sampling, StartTime, "PC");
 
         Assert.Equal("too-few", result.Error);
     }

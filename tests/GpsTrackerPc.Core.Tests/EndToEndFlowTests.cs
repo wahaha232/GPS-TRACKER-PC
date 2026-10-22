@@ -48,7 +48,7 @@ public class EndToEndFlowTests : IDisposable
     {
         var route = CreateRoute(outages: new[] { new RouteOutage(3, 2) });
         var playback = PlaybackController.GenerateDirect(route);
-        var build = SimulatedRecordBuilder.Build(playback, StartTime, id: "e2e-track");
+        var build = SimulatedRecordBuilder.Build(playback, StartTime, deviceName: "NB", id: "e2e-track");
         Assert.True(build.IsSuccess, build.Error);
 
         var github = new FakeGitHubHandler();
@@ -65,7 +65,7 @@ public class EndToEndFlowTests : IDisposable
         Assert.Equal(UploadStatus.Uploaded, upload.Status);
         var trackPath = "gpstracker-web/data/e2e-track.json";
         var track = JsonNode.Parse(github.Files[trackPath].Content)!.AsObject();
-        Assert.Equal("PC", track["deviceName"]!.GetValue<string>());
+        Assert.Equal("NB", track["deviceName"]!.GetValue<string>());
         Assert.Equal("simulated", track["source"]!.GetValue<string>());
         var offsets = track["points"]!.AsArray()
             .Select(point => point![4]!.GetValue<double>())
@@ -80,7 +80,7 @@ public class EndToEndFlowTests : IDisposable
         Assert.Contains(tracks.OfType<JsonObject>(), item => item["trackId"]!.GetValue<string>() == "existing");
         var imported = tracks.OfType<JsonObject>()
             .Single(item => item["trackId"]!.GetValue<string>() == "e2e-track");
-        Assert.Equal("PC", imported["deviceName"]!.GetValue<string>());
+        Assert.Equal("NB", imported["deviceName"]!.GetValue<string>());
         Assert.Equal("simulated", imported["source"]!.GetValue<string>());
         Assert.Equal("e2e-track.json", imported["file"]!.GetValue<string>());
     }
@@ -101,6 +101,7 @@ public class EndToEndFlowTests : IDisposable
             GpxTrackBuilder.Parse(gpx),
             new GpxBuildOptions { Id = "gpx-e2e" });
         Assert.True(build.IsSuccess);
+        RecordDeviceNaming.ApplyDeviceName(build, "NB");
 
         var github = new FakeGitHubHandler();
         github.AddFile("gpstracker-web/data/manifest.json", """{"tracks":[]}""");
@@ -114,9 +115,10 @@ public class EndToEndFlowTests : IDisposable
         var uploaded = JsonNode.Parse(
             github.Files["gpstracker-web/data/gpx-e2e.json"].Content)!.AsObject();
         Assert.Equal("gpx-import", uploaded["source"]!.GetValue<string>());
-        Assert.Null(uploaded["deviceName"]);
+        Assert.Equal("NB", uploaded["deviceName"]!.GetValue<string>());
         var manifest = JsonNode.Parse(github.Files["gpstracker-web/data/manifest.json"].Content)!.AsObject();
-        Assert.Single(manifest["tracks"]!.AsArray());
+        var manifestEntry = manifest["tracks"]!.AsArray()[0]!.AsObject();
+        Assert.Equal("NB", manifestEntry["deviceName"]!.GetValue<string>());
 
         var exported = GpxExporter.Export(new GpxTrackDocument
         {

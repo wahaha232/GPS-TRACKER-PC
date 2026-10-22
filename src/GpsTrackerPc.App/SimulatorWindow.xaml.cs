@@ -31,6 +31,7 @@ public partial class SimulatorWindow : Window
     private readonly HttpClient _searchClient;
     private readonly HttpClient _uploadClient;
     private readonly TokenStore _tokenStore;
+    private readonly DeviceNameStore _deviceNameStore;
     private readonly NominatimGeocoder _geocoder;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly DispatcherTimer _playbackTimer;
@@ -47,11 +48,12 @@ public partial class SimulatorWindow : Window
     private PlaybackResult? _lastPlayback;
     private int _sentSampleCount;
 
-    public SimulatorWindow(TokenStore tokenStore)
+    public SimulatorWindow(TokenStore tokenStore, DeviceNameStore deviceNameStore)
     {
         InitializeComponent();
 
         _tokenStore = tokenStore ?? throw new ArgumentNullException(nameof(tokenStore));
+        _deviceNameStore = deviceNameStore ?? throw new ArgumentNullException(nameof(deviceNameStore));
         _favorites = new FavoritesStore(AppPaths.FavoritesFile);
         _library = new RouteLibraryStore(AppPaths.RoutesDirectory);
         _searchClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
@@ -1062,7 +1064,11 @@ public partial class SimulatorWindow : Window
             return;
         }
 
-        var window = new SimulatedUploadWindow(_lastPlayback, _tokenStore, _uploadClient)
+        var window = new SimulatedUploadWindow(
+            _lastPlayback,
+            _tokenStore,
+            _uploadClient,
+            _deviceNameStore.Load())
         {
             Owner = this,
         };

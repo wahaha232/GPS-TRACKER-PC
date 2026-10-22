@@ -12,10 +12,12 @@ public static class SimulatedRecordBuilder
     public static GpxBuildResult Build(
         PlaybackResult playback,
         DateTimeOffset startTime,
+        string deviceName,
         string? id = null,
         string? mode = null)
     {
         ArgumentNullException.ThrowIfNull(playback);
+        var normalizedDeviceName = DeviceNameStore.Validate(deviceName);
 
         var samples = playback.Samples
             .Where(sample =>
@@ -79,10 +81,10 @@ public static class SimulatedRecordBuilder
         }
 
         track.StartTimeMs = startMs;
-        track.DeviceName = "PC";
+        track.DeviceName = normalizedDeviceName;
         track.Source = "simulated";
         entry.StartTimeMs = startMs;
-        entry.DeviceName = "PC";
+        entry.DeviceName = normalizedDeviceName;
         entry.Source = "simulated";
 
         var summary = new GpxImportSummary(

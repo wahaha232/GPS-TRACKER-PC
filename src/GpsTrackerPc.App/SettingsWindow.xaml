@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="設定"
         Width="660"
-        Height="470"
+        Height="700"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         Background="#0B1220">
@@ -88,6 +88,37 @@
               Foreground="#E2E8F0"
               BorderBrush="#334155"
               Click="OpenFolder_Click" />
+
+      <Separator Background="#1E293B" Margin="0,16,0,0" />
+      <TextBlock Text="裝置名稱"
+                 Foreground="#E2E8F0"
+                 FontSize="14"
+                 FontWeight="SemiBold"
+                 Margin="0,16,0,0" />
+      <TextBlock Text="上傳紀錄時使用的裝置名稱，預設 PC。多台電腦請使用不同名稱；和手機同名會被拒絕，和其他模擬裝置同名會提示會合併。"
+                 Foreground="#94A3B8"
+                 FontSize="12"
+                 TextWrapping="Wrap"
+                 Margin="0,6,0,0" />
+      <TextBox x:Name="DeviceNameBox"
+               Margin="0,10,0,0"
+               Padding="8,6"
+               Background="#0F172A"
+               Foreground="#E2E8F0"
+               BorderBrush="#334155" />
+      <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+        <Button Content="儲存裝置名稱"
+                Padding="14,6"
+                Background="#1E293B"
+                Foreground="#E2E8F0"
+                BorderBrush="#334155"
+                Click="SaveDeviceName_Click" />
+        <TextBlock x:Name="DeviceNameStatusText"
+                   Foreground="#94A3B8"
+                   FontSize="12"
+                   VerticalAlignment="Center"
+                   Margin="12,0,0,0" />
+      </StackPanel>
     </StackPanel>
 
     <StackPanel Grid.Row="4"

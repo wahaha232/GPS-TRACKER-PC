@@ -6,6 +6,7 @@ using GpsTrackerPc.App.Infrastructure;
 using GpsTrackerPc.Core.Data;
 using GpsTrackerPc.Core.Gpx;
 using GpsTrackerPc.Core.Security;
+using GpsTrackerPc.Core.Simulator;
 using GpsTrackerPc.Core.Updates;
 using Microsoft.Web.WebView2.Core;
 
@@ -52,6 +53,7 @@ public partial class MainWindow : Window
 
     private readonly string _dataDirectory = AppPaths.DataDirectory;
     private readonly TokenStore _tokenStore;
+    private readonly DeviceNameStore _deviceNameStore;
     private readonly HttpClient _httpClient;
     private readonly DataSyncService _syncService;
     private readonly HttpClient _updateClient;
@@ -73,6 +75,7 @@ public partial class MainWindow : Window
 
         Directory.CreateDirectory(_dataDirectory);
         _tokenStore = new TokenStore(AppPaths.GitHubTokenFile);
+        _deviceNameStore = new DeviceNameStore(AppPaths.SettingsFile);
         _httpClient = new HttpClient
         {
             Timeout = TimeSpan.FromSeconds(60),
@@ -348,7 +351,7 @@ public partial class MainWindow : Window
         }
 
         var uploader = new GitHubRecordUploader(_httpClient, _tokenStore);
-        var window = new ImportWindow(_tokenStore, uploader)
+        var window = new ImportWindow(_tokenStore, _deviceNameStore, uploader)
         {
             Owner = this,
         };
@@ -369,7 +372,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        _simulatorWindow = new SimulatorWindow(_tokenStore)
+        _simulatorWindow = new SimulatorWindow(_tokenStore, _deviceNameStore)
         {
             Owner = this,
         };
@@ -383,6 +386,7 @@ public partial class MainWindow : Window
     {
         var window = new SettingsWindow(
             _tokenStore,
+            _deviceNameStore,
             () => CheckForUpdatesAsync(manual: true))
         {
             Owner = this,

@@ -71,7 +71,7 @@
             Padding="12,10"
             Margin="0,16,0,0"
             VerticalAlignment="Top">
-      <TextBlock Text="⚠️ 上傳後紀錄會寫入公開的 GitHub 倉庫，任何人都看得到路線與時間。裝置會標記為 PC，來源標記為 simulated。"
+      <TextBlock Text="⚠️ 上傳後紀錄會寫入公開的 GitHub 倉庫，任何人都看得到路線與時間。裝置名稱使用設定中的值，來源標記為 simulated。"
                  Foreground="#FCA5A5"
                  FontSize="12"
                  TextWrapping="Wrap" />

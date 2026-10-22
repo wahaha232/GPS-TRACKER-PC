@@ -15,6 +15,8 @@ internal static class AppPaths
 
     public static string SyncCacheFile => Path.Combine(Root, "sync-cache.json");
 
+    public static string SettingsFile => Path.Combine(Root, "settings.json");
+
     public static string FavoritesFile => Path.Combine(Root, "favorites.json");
 
     public static string RoutesDirectory => Path.Combine(Root, "routes");
