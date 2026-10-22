@@ -43,7 +43,34 @@ public partial class SettingsWindow : Window
         RefreshTokenStatus();
     }
 
-    private void SaveDeviceName_Click(object sender, RoutedEventArgs e)
+    private void SaveDeviceName_Click(object sender, RoutedEventArgs e) =>
+        TrySaveDeviceName(showSuccessMessage: true);
+
+    private void ApplySettings_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TrySaveDeviceName(showSuccessMessage: false))
+        {
+            return;
+        }
+
+        try
+        {
+            if (ThemeBox.SelectedValue is AppThemePreference preference)
+            {
+                _themeStore.Save(preference);
+                ThemeManager.Apply(preference);
+            }
+
+            _updateCheckStore.SetAutoCheck(AutoCheckUpdatesCheck.IsChecked == true);
+            DeviceNameStatusText.Text = "已套用設定。";
+        }
+        catch (Exception ex)
+        {
+            DeviceNameStatusText.Text = "套用設定失敗：" + ex.Message;
+        }
+    }
+
+    private bool TrySaveDeviceName(bool showSuccessMessage)
     {
         var name = DeviceNameBox.Text.Trim();
         var devices = ManifestDeviceReader.Read(Path.Combine(AppPaths.DataDirectory, "manifest.json"));
@@ -57,7 +84,7 @@ public partial class SettingsWindow : Window
                 "無法儲存裝置名稱",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
-            return;
+            return false;
         }
 
         if (validation.HasSimulatedConflict)
@@ -71,7 +98,7 @@ public partial class SettingsWindow : Window
                 MessageBoxImage.Warning);
             if (answer != MessageBoxResult.Yes)
             {
-                return;
+                return false;
             }
         }
 
@@ -80,6 +107,12 @@ public partial class SettingsWindow : Window
             _deviceNameStore.Save(name);
             DeviceNameBox.Text = _deviceNameStore.Load();
             DeviceNameStatusText.Text = $"已儲存：{DeviceNameBox.Text}";
+            if (showSuccessMessage)
+            {
+                MessageBox.Show(this, "裝置名稱已儲存。", "已儲存", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            return true;
         }
         catch (Exception ex)
         {
@@ -90,6 +123,7 @@ public partial class SettingsWindow : Window
                 "儲存失敗",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
+            return false;
         }
     }
 

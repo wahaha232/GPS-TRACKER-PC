@@ -373,12 +373,44 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_simulatorWindow != null)
+        {
+            _simulatorWindow.Show();
+            if (_simulatorWindow.WindowState == WindowState.Minimized)
+            {
+                _simulatorWindow.WindowState = WindowState.Normal;
+            }
+
+            _simulatorWindow.Activate();
+            return;
+        }
+
         _simulatorWindow = new SimulatorWindow(_tokenStore, _deviceNameStore)
         {
             Owner = this,
         };
         _simulatorWindow.Closed += (_, _) => _simulatorWindow = null;
         _simulatorWindow.Show();
+    }
+
+    /// <summary>回首頁：回到主視窗並重新載入紀錄網站的首頁。</summary>
+    public void ShowHomePage()
+    {
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Show();
+        Activate();
+        if (Browser.CoreWebView2 != null)
+        {
+            Browser.CoreWebView2.Navigate(StartPage);
+        }
+        else
+        {
+            Browser.Source = new Uri(StartPage);
+        }
     }
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e) => OpenSettings();

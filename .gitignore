@@ -5,4 +5,5 @@ obj/
 TestResults/
 publish/
 GpsTrackerPc-win-x64.zip
+GpsTrackerPc-win-x64/
 release-notes.md

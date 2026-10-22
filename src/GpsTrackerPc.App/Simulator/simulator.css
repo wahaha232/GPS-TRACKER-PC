@@ -61,6 +61,27 @@ body {
   box-shadow: 0 0 0 8px rgba(239, 68, 68, 0.32), 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
+.current-location-marker {
+  width: 32px;
+  height: 32px;
+  position: relative;
+  transition: transform 250ms linear;
+  will-change: transform;
+}
+
+.current-location-pin {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50% 50% 50% 0;
+  background: #3b82f6;
+  border: 3px solid #f8fafc;
+  transform: translateX(-50%) rotate(-45deg);
+  box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.22), 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
 #basemapAttribution {
   position: absolute;
   right: 8px;

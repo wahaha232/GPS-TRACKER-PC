@@ -56,6 +56,7 @@ public partial class SimulatorWindow : Window
     private ViewportBounds? _viewport;
     private Coordinates? _lastPlaybackCoordinate;
     private bool _hasUnsavedChanges;
+    private bool _locating;
 
     public SimulatorWindow(TokenStore tokenStore, DeviceNameStore deviceNameStore)
     {
@@ -442,6 +443,44 @@ public partial class SimulatorWindow : Window
         RefreshTimingControls();
         SetPlaybackControlState();
         SendRoute();
+    }
+
+    private void ApplyRouteSettings_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(RouteNameBox.Text))
+        {
+            SetStatus("路線名稱不能是空白。");
+            return;
+        }
+
+        if (!double.TryParse(
+                SpeedBox.Text.Trim(),
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var speed))
+        {
+            SetStatus("速度格式不正確。");
+            return;
+        }
+
+        try
+        {
+            _route.Name = RouteNameBox.Text.Trim();
+            _route.SetSpeed(speed);
+            _route.Loop = LoopCheck.IsChecked == true;
+            _route.NaturalSpeed = NaturalCheck.IsChecked == true;
+            _route.SetUseGpxTiming(TimingCheck.IsChecked == true && _route.CanUseGpxTiming);
+        }
+        catch (Exception ex)
+        {
+            SetStatus("套用路線設定失敗：" + ex.Message);
+            return;
+        }
+
+        _hasUnsavedChanges = true;
+        RefreshTimingControls();
+        SendRoute();
+        SetStatus("已套用路線設定。");
     }
 
     private void SpeedPreset_Click(object sender, RoutedEventArgs e)
@@ -1538,6 +1577,43 @@ public partial class SimulatorWindow : Window
             ? value
             : double.NaN;
 
+    private async void CurrentLocation_Click(object sender, RoutedEventArgs e)
+    {
+        if (_locating)
+        {
+            return;
+        }
+
+        _locating = true;
+        CurrentLocationButton.IsEnabled = false;
+        SetStatus("正在透過 Windows 定位服務取得目前位置（會使用 Wi-Fi／基地台）…");
+        try
+        {
+            var result = await CurrentLocationProvider.GetAsync();
+            if (!result.Success || result.Coordinates == null)
+            {
+                SetStatus(result.ErrorMessage ?? "無法取得目前位置。");
+                return;
+            }
+
+            var coordinate = result.Coordinates;
+            Post(new
+            {
+                type = "showCurrentLocation",
+                lat = coordinate.Latitude,
+                lon = coordinate.Longitude,
+                center = true,
+            });
+            SetStatus(
+                $"目前位置：{coordinate.FormattedLatitude()}, {coordinate.FormattedLongitude()}（Windows 定位）");
+        }
+        finally
+        {
+            _locating = false;
+            CurrentLocationButton.IsEnabled = true;
+        }
+    }
+
     private void Locate_Click(object sender, RoutedEventArgs e)
     {
         var coordinate = _playback?.Current?.Coordinates ?? _lastPlaybackCoordinate;
@@ -1558,9 +1634,15 @@ public partial class SimulatorWindow : Window
 
     private void BackToHome_Click(object sender, RoutedEventArgs e)
     {
-        Close();
-        if (!IsVisible && Owner is Window owner)
+        // 回首頁只隱藏模擬視窗，不關閉程式；再次按「模擬」會回到同一個編輯狀態。
+        Hide();
+        if (Owner is MainWindow main)
         {
+            main.ShowHomePage();
+        }
+        else if (Owner is Window owner)
+        {
+            owner.Show();
             owner.Activate();
         }
     }
@@ -1582,13 +1664,21 @@ public partial class SimulatorWindow : Window
             }
         }
 
-        _playbackTimer.Stop();
-        _playbackWatch.Reset();
-        _playback?.Stop();
-        _lifetime.Cancel();
-        _searchClient.Dispose();
-        _uploadClient.Dispose();
-        MapView.Dispose();
+        // 關閉流程不要讓任何清理動作的例外變成交互崩潰；模擬視窗關閉後主視窗仍會保留。
+        try
+        {
+            _playbackTimer.Stop();
+            _playbackWatch.Reset();
+            _playback?.Stop();
+            _lifetime.Cancel();
+            _searchClient.Dispose();
+            _uploadClient.Dispose();
+            MapView.Dispose();
+        }
+        catch (Exception)
+        {
+            // WebView2 或網路資源在關閉途中可能已經被釋放，忽略清理例外。
+        }
     }
 }
 

@@ -166,6 +166,13 @@
                  FontSize="12"
                  VerticalAlignment="Center"
                  Margin="0,0,14,0" />
+      <Button Content="套用"
+              Padding="14,7"
+              Margin="0,0,8,0"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
+              Click="ApplySettings_Click" />
       <Button Content="檢查更新"
               Padding="14,7"
               Margin="0,0,8,0"

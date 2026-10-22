@@ -16,6 +16,8 @@
   var lastPlaybackPosition = null;
   var lastPlaybackOutage = false;
   var lastConfirmedPoint = null;
+  var currentLocationMarker = null;
+  var currentLocationPosition = null;
 
   var trailDirty = false;
   var trailTimer = null;
@@ -393,6 +395,30 @@
     updatePlaybackTail();
   }
 
+  function showCurrentLocation(message) {
+    if (!Number.isFinite(message.lat) || !Number.isFinite(message.lon)) return;
+
+    currentLocationPosition = { lat: message.lat, lon: message.lon };
+    if (currentLocationMarker) {
+      currentLocationMarker.remove();
+      currentLocationMarker = null;
+    }
+
+    var element = document.createElement("div");
+    element.className = "current-location-marker";
+    element.title = "目前位置（Windows 定位）";
+    var pin = document.createElement("div");
+    pin.className = "current-location-pin";
+    element.appendChild(pin);
+    currentLocationMarker = new maplibregl.Marker({ element: element, anchor: "bottom" })
+      .setLngLat([message.lon, message.lat])
+      .addTo(map);
+
+    if (message.center) {
+      map.panTo([message.lon, message.lat], { duration: 400 });
+    }
+  }
+
   function restoreCustomLayers() {
     ensureCustomLayers();
     updateRouteSource();
@@ -410,6 +436,14 @@
       }
     } else {
       showRouteMarkers();
+    }
+
+    if (currentLocationPosition) {
+      showCurrentLocation({
+        lat: currentLocationPosition.lat,
+        lon: currentLocationPosition.lon,
+        center: false
+      });
     }
 
     updatePlaybackTail();
@@ -562,6 +596,9 @@
           if (Number.isFinite(message.lat) && Number.isFinite(message.lon)) {
             map.panTo([message.lon, message.lat], { duration: 300 });
           }
+          break;
+        case "showCurrentLocation":
+          showCurrentLocation(message);
           break;
         default:
           break;

@@ -32,12 +32,6 @@
       <Setter Property="BorderBrush" Value="{DynamicResource AppBorderStrong}" />
       <Setter Property="Padding" Value="6,4" />
     </Style>
-    <Style TargetType="ComboBox">
-      <Setter Property="Background" Value="{DynamicResource AppSurfaceAlt}" />
-      <Setter Property="Foreground" Value="{DynamicResource AppText}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource AppBorderStrong}" />
-      <Setter Property="Padding" Value="6,3" />
-    </Style>
     <Style TargetType="CheckBox">
       <Setter Property="Foreground" Value="{DynamicResource AppText}" />
       <Setter Property="Margin" Value="0,4,0,0" />
@@ -148,7 +142,12 @@
                           Unchecked="Follow_Changed" />
             <Button Content="定位"
                     Padding="14,5"
+                    Margin="0,0,6,0"
                     Click="Locate_Click" />
+            <Button x:Name="CurrentLocationButton"
+                    Content="📍 目前位置"
+                    Padding="14,5"
+                    Click="CurrentLocation_Click" />
           </StackPanel>
 
           <StackPanel x:Name="RouteEditPanel">
@@ -175,6 +174,10 @@
           <CheckBox x:Name="LoopCheck" Content="循環路線" Checked="Option_Changed" Unchecked="Option_Changed" />
           <CheckBox x:Name="NaturalCheck" Content="速度自然起伏" Checked="Option_Changed" Unchecked="Option_Changed" />
           <CheckBox x:Name="TimingCheck" Content="依 GPX 時間播放（路線要有時間資料）" Checked="Option_Changed" Unchecked="Option_Changed" />
+          <Button Content="套用"
+                  HorizontalAlignment="Left"
+                  Margin="0,8,0,0"
+                  Click="ApplyRouteSettings_Click" />
 
           <Separator />
           <TextBlock Text="路線點" Style="{StaticResource Section}" />
