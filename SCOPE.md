@@ -56,8 +56,9 @@ PC 是**獨立裝置**：模擬產生的紀錄以裝置名稱 `PC` 上傳，**�
 2. **GitHub Token**：用 Windows DPAPI 加密保存，不要存明文
 3. **GPX 匯出**：單筆＋批次（選資料夾一次存完），可選存檔位置
 4. **GPX 匯入上傳**：多選、拖放、顯示進度、依序上傳。網頁已有單筆匯入（`records.js` 的 `importGpx`、`gt-gpx.js`），沿用它的格式與防重複規則
-5. **自動更新**：（⚠️ PC 版不在 `ANDROID-APP-DEV` repo 裡，GitHub Actions 要放在哪個 GitHub repo 使用者還沒決定——做到第 4 階段時先問使用者，App 端的檢查／下載／替換邏輯可以先做）GitHub Actions 在 `windows-latest` 建置，發佈到 Release tag `gpstracker-desktop-latest`（不要動 APK 用的 `gpstracker-latest`）；
-   App 查最新版 → 比版本 → 下載（網址必須以 `https://github.com/wahaha232/ANDROID-APP-DEV/releases/download/` 開頭）
+5. **自動更新**：（2026-10-22 使用者決定：**新開一個公開 GitHub repo `wahaha232/GPS-TRACKER-PC`**，放本資料夾的程式；repo 由使用者建立並 push，開發工具不要自己建 repo）GitHub Actions 放在本資料夾的 `.github/workflows/`，在 `windows-latest` 建置，發佈到 Release tag `gpstracker-desktop-latest`；
+   建置時要從 `wahaha232/ANDROID-APP-DEV` 取出 `gpstracker-web` 一起打包（公開 repo，不需要 Token）。
+   App 查最新版（`https://api.github.com/repos/wahaha232/GPS-TRACKER-PC/releases/tags/gpstracker-desktop-latest`，公開 repo 不用 Token）→ 比版本 → 下載（網址必須以 `https://github.com/wahaha232/GPS-TRACKER-PC/releases/download/` 開頭）
    → 驗 SHA-256 → 舊 EXE 改名 `.old`、放新檔、重啟，下次啟動刪 `.old`
 6. **模擬**（從 GPS 定位器移植成 C#，連同單元測試）：
    - `RouteSimulator.kt`：速度預設（走路 5／跑步 10／騎車 18／開車 40 km/h）、停留點、速度自然起伏
@@ -67,7 +68,7 @@ PC 是**獨立裝置**：模擬產生的紀錄以裝置名稱 `PC` 上傳，**�
    - 兩種產生方式：即時播放、直接產生
    - **不要搬**：`MockLocationService`、企業版、授權、團隊範本、雲端同步、無障礙設定
 7. **模擬結果轉成紀錄**：格式與 `gt-gpx.js` 的 `build()` 輸出相同，`deviceName: "PC"`，另加 `source: "simulated"`，上傳到 `data/<trackId>.json` 並更新 `manifest.json`（寫入衝突 409／422 要重讀合併重試）
-8. **網站預設裝置**：`gt-core.js` 的 `chooseDevice` 沒指定裝置時取最新一筆紀錄的裝置，會被 PC 模擬紀錄搶走。**要不要改成預設排除 `PC`，使用者還沒決定——做到第 7 階段時先問使用者，不要自己改**
+8. **網站預設裝置**：`gt-core.js` 的 `chooseDevice` 沒指定裝置時取最新一筆紀錄的裝置，會被 PC 模擬紀錄搶走。**2026-10-22 使用者決定：預設排除 `PC`**——沒指定裝置（網址沒有 `?device=`、localStorage 也沒有）時，只從 PC 以外的裝置挑最新一筆；只有 PC 一台裝置時才退回 PC。使用者手動切換到 PC 照常可以看。要改 `gpstracker-web/gt-core.js` 並補網頁測試；網站只能本機 commit，不要 push
 
 ## 五、規則
 
