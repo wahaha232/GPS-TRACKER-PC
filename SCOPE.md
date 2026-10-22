@@ -77,6 +77,8 @@ PC 是**獨立裝置**：模擬產生的紀錄以裝置名稱 `PC` 上傳，**�
   - 重算快取雜湊：`python -I "D:\Claude\ANDROID-APP-DEV\GPSTracker\gpstracker-redesign\bust_hashes.py" "D:\Claude\ANDROID-APP-DEV\gpstracker-web"`（新增的 `<script>` 先帶 `?v=0`）
   - 跑網頁測試：`node --test` 後面**逐一列出** `gpstracker-web/tests/*.test.js` 檔案（Node 24 不能直接傳資料夾）
 - 版本控制：`D:\Claude\GPS TRACKER PC\` 是獨立的本機 git repo，PC 版的變更 commit 在這裡；
-  改到 `gpstracker-web` 的部分另外 commit 在 `D:\Claude\ANDROID-APP-DEV`。兩邊都**不要 `git push`**（push 要使用者同意）
+  改到 `gpstracker-web` 的部分另外 commit 在 `D:\Claude\ANDROID-APP-DEV`。
+  - **網站不能 push**：`ANDROID-APP-DEV` 只能本機 commit，**絕對不要 `git push`**（有 GitHub Pages，push 就會更新網站；要 push 先問使用者）
+  - **桌面版程式可以 push**：`GPS TRACKER PC` 的 commit 可以 push（目前沒有 GitHub 遠端，沒有就不用 push）
 - 不要把 GitHub Token 或任何金鑰寫進程式碼、設定檔或 commit
 - 每次收工：更新 `DEV_PROGRESS.md` 的階段狀態，並在「每日紀錄」加一行（日期、工具、做了什麼、下一步）

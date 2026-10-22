@@ -1,7 +1,8 @@
 # 本專案規則（GPS Tracker PC 版）
 
-- **絕對不要執行 `git push`**，任何 repo 都不行，只能在本機 `git commit`。
-  - 特別是 `D:\Claude\ANDROID-APP-DEV`：它開了 GitHub Pages，push 上去網站就會直接更新。
-  - 要 push 時，先停下來問使用者，由使用者自己決定。
+- **網站不能 push**：`D:\Claude\ANDROID-APP-DEV`（含 `gpstracker-web`）一律只能在本機 `git commit`，**絕對不要 `git push`**。
+  - 它開了 GitHub Pages，push 上去網站就會直接更新。
+  - 網站要 push 時，先停下來問使用者，由使用者自己決定。
+- **桌面版程式可以 push**：`D:\Claude\GPS TRACKER PC` 的 commit 可以 push（目前還沒設定 GitHub 遠端，沒有遠端時不用 push）。
 - 開工前先讀 `SCOPE.md` 和 `DEV_PROGRESS.md`，照規格做。
 - 回覆和程式註解一律用繁體中文。
