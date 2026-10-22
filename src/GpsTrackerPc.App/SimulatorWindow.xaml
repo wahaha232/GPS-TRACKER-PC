@@ -125,6 +125,16 @@
                      FontSize="12"
                      Margin="0,4,0,0" />
 
+          <TextBlock Text="底圖" Style="{StaticResource Section}" />
+          <ComboBox x:Name="BasemapBox"
+                    DisplayMemberPath="Label"
+                    SelectedValuePath="Value"
+                    SelectionChanged="Basemap_Changed" />
+          <CheckBox x:Name="FollowCheck"
+                    Content="跟隨目前位置（只在畫面邊緣時平移）"
+                    Checked="Follow_Changed"
+                    Unchecked="Follow_Changed" />
+
           <StackPanel x:Name="RouteEditPanel">
           <TextBlock Text="路線名稱" Style="{StaticResource Section}" />
           <TextBox x:Name="RouteNameBox" TextChanged="RouteNameBox_TextChanged" />

@@ -3,16 +3,33 @@
 
   var mapError = document.getElementById("mapError");
   var mapErrorText = document.getElementById("mapErrorText");
+  var attributionElement = document.getElementById("basemapAttribution");
   var routePoints = [];
+  var routeLoop = false;
   var markers = [];
   var selectedId = null;
+
   var playbackActive = false;
   var playbackMarker = null;
   var playbackSegments = [];
   var lastPlaybackTime = null;
+  var lastPlaybackPosition = null;
+  var lastPlaybackOutage = false;
+  var lastConfirmedPoint = null;
+
   var trailDirty = false;
   var trailTimer = null;
   var lastTrailSetDataAt = 0;
+
+  var currentBasemap = "simple";
+  var styleGeneration = 0;
+
+  var BASEMAP_ATTRIBUTION = {
+    simple: "© OpenFreeMap · © OpenMapTiles · © OpenStreetMap contributors",
+    satellite: "Esri, Maxar, Earthstar Geographics, GIS User Community",
+    nlsc: "內政部國土測繪中心（NLSC）通用版電子地圖",
+    none: "無底圖"
+  };
 
   function showError(message) {
     mapError.hidden = false;
@@ -24,6 +41,57 @@
     window.chrome.webview.postMessage(Object.assign({ type: type }, data || {}));
   }
 
+  function rasterStyle(tiles, attribution) {
+    return {
+      version: 8,
+      sources: {
+        basemap: {
+          type: "raster",
+          tiles: [tiles],
+          tileSize: 256,
+          maxzoom: 19,
+          attribution: attribution
+        }
+      },
+      layers: [{ id: "basemap", type: "raster", source: "basemap" }]
+    };
+  }
+
+  function styleFor(kind) {
+    if (kind === "satellite") {
+      return rasterStyle(
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        BASEMAP_ATTRIBUTION.satellite
+      );
+    }
+
+    if (kind === "nlsc") {
+      return rasterStyle(
+        "https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}",
+        BASEMAP_ATTRIBUTION.nlsc
+      );
+    }
+
+    if (kind === "none") {
+      return {
+        version: 8,
+        sources: {},
+        layers: [{
+          id: "background",
+          type: "background",
+          paint: { "background-color": "#0b1220" }
+        }]
+      };
+    }
+
+    return "https://tiles.openfreemap.org/styles/positron";
+  }
+
+  function updateAttribution(kind) {
+    if (!attributionElement) return;
+    attributionElement.textContent = BASEMAP_ATTRIBUTION[kind] || BASEMAP_ATTRIBUTION.simple;
+  }
+
   if (typeof maplibregl === "undefined") {
     showError("找不到 MapLibre 函式庫。");
     return;
@@ -33,19 +101,7 @@
   try {
     map = new maplibregl.Map({
       container: "map",
-      style: {
-        version: 8,
-        sources: {
-          esri: {
-            type: "raster",
-            tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
-            tileSize: 256,
-            maxzoom: 19,
-            attribution: "Esri, Maxar, Earthstar Geographics, GIS User Community"
-          }
-        },
-        layers: [{ id: "esri", type: "raster", source: "esri" }]
-      },
+      style: styleFor("simple"),
       center: [121.564472, 25.033964],
       zoom: 15,
       maxZoom: 20,
@@ -61,13 +117,92 @@
   }
 
   window.__simMap = map;
+  updateAttribution(currentBasemap);
 
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
-  map.addControl(new maplibregl.AttributionControl({ compact: false }), "bottom-right");
   map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
 
   function emptyRoute() {
     return { type: "FeatureCollection", features: [] };
+  }
+
+  function routeFeature() {
+    var coordinates = routePoints.map(function (point) {
+      return [point.lon, point.lat];
+    });
+    if (routePoints.length > 1 && routeLoop) {
+      coordinates.push([routePoints[0].lon, routePoints[0].lat]);
+    }
+
+    return coordinates.length >= 2
+      ? {
+          type: "FeatureCollection",
+          features: [{
+            type: "Feature",
+            properties: {},
+            geometry: { type: "LineString", coordinates: coordinates }
+          }]
+        }
+      : emptyRoute();
+  }
+
+  function updateRouteSource() {
+    var source = map.getSource("route");
+    if (source) source.setData(routeFeature());
+  }
+
+  function ensureCustomLayers() {
+    if (!map.getSource("route")) {
+      map.addSource("route", { type: "geojson", data: emptyRoute() });
+    }
+
+    if (!map.getLayer("route-casing")) {
+      map.addLayer({
+        id: "route-casing",
+        type: "line",
+        source: "route",
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": "#0b1220", "line-width": 8, "line-opacity": 0.8 }
+      });
+    }
+
+    if (!map.getLayer("route-line")) {
+      map.addLayer({
+        id: "route-line",
+        type: "line",
+        source: "route",
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": "#38bdf8", "line-width": 4 }
+      });
+    }
+
+    if (!map.getSource("playback")) {
+      map.addSource("playback", { type: "geojson", data: emptyRoute() });
+    }
+
+    if (!map.getLayer("playback-line")) {
+      map.addLayer({
+        id: "playback-line",
+        type: "line",
+        source: "playback",
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": "#22c55e", "line-width": 5, "line-opacity": 0.95 }
+      });
+    }
+
+    if (!map.getSource("playback-tail")) {
+      map.addSource("playback-tail", { type: "geojson", data: emptyRoute() });
+    }
+
+    if (!map.getLayer("playback-tail-line")) {
+      map.addLayer({
+        id: "playback-tail-line",
+        type: "line",
+        source: "playback-tail",
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": "#86efac", "line-width": 4, "line-opacity": 0.95 }
+      });
+    }
   }
 
   function updateMarkerSelection() {
@@ -130,7 +265,33 @@
     source.setData({ type: "FeatureCollection", features: features });
   }
 
-  // 播放軌跡最多每秒更新一次；其他時間只累積，避免大量 setData 造成 CPU 負擔。
+  function updatePlaybackTail() {
+    var source = map.getSource("playback-tail");
+    if (!source) return;
+
+    if (!playbackActive ||
+        !lastPlaybackPosition ||
+        lastPlaybackOutage ||
+        !lastConfirmedPoint) {
+      source.setData(emptyRoute());
+      return;
+    }
+
+    var current = [lastPlaybackPosition.lon, lastPlaybackPosition.lat];
+    source.setData({
+      type: "FeatureCollection",
+      features: [{
+        type: "Feature",
+        properties: {},
+        geometry: {
+          type: "LineString",
+          coordinates: [lastConfirmedPoint, current]
+        }
+      }]
+    });
+  }
+
+  // 播放軌跡最多每秒更新一次；其他時間只累積，避免大量 setData。
   function scheduleTrailUpdate() {
     trailDirty = true;
     var now = performance.now();
@@ -161,6 +322,12 @@
     });
   }
 
+  function hideRouteMarkers() {
+    markers.forEach(function (item) {
+      item.element.style.display = "none";
+    });
+  }
+
   function clearPlayback() {
     if (playbackMarker) {
       playbackMarker.remove();
@@ -168,14 +335,21 @@
     }
     playbackSegments = [];
     lastPlaybackTime = null;
+    lastPlaybackPosition = null;
+    lastPlaybackOutage = false;
+    lastConfirmedPoint = null;
     document.getElementById("outageBadge").hidden = true;
     scheduleTrailUpdate();
+    updatePlaybackTail();
   }
 
   function ensurePlaybackMarker(lat, lon) {
     if (!playbackMarker) {
       var element = document.createElement("div");
       element.className = "playback-marker";
+      var pin = document.createElement("div");
+      pin.className = "playback-pin";
+      element.appendChild(pin);
       playbackMarker = new maplibregl.Marker({ element: element, anchor: "center" })
         .setLngLat([lon, lat])
         .addTo(map);
@@ -188,12 +362,12 @@
   function startPlaybackView(message) {
     clearPlayback();
     playbackActive = true;
-    markers.forEach(function (item) {
-      item.element.style.display = "none";
-    });
+    hideRouteMarkers();
     if (Number.isFinite(message.lat) && Number.isFinite(message.lon)) {
+      lastPlaybackPosition = { lat: message.lat, lon: message.lon };
       ensurePlaybackMarker(message.lat, message.lon);
     }
+    updatePlaybackTail();
   }
 
   function appendPlaybackSample(message) {
@@ -207,6 +381,7 @@
     }
 
     lastPlaybackTime = message.elapsed;
+    lastConfirmedPoint = point;
     scheduleTrailUpdate();
     updatePlaybackPosition(message);
   }
@@ -222,8 +397,8 @@
       })
       .filter(function (segment) { return segment.length > 0; });
 
-    var lastPoint = null;
     var sourceSegments = message.segments || [];
+    var lastPoint = null;
     for (var index = sourceSegments.length - 1; index >= 0; index--) {
       var segment = sourceSegments[index] || [];
       if (segment.length) {
@@ -232,19 +407,29 @@
       }
     }
 
-    lastPlaybackTime = lastPoint && Number.isFinite(lastPoint.elapsed) ? lastPoint.elapsed : null;
-    scheduleTrailUpdate();
     if (lastPoint) {
-      updatePlaybackPosition(lastPoint);
+      lastPlaybackTime = Number.isFinite(lastPoint.elapsed) ? lastPoint.elapsed : null;
+      lastConfirmedPoint = [lastPoint.lon, lastPoint.lat];
+      updatePlaybackPosition({
+        lat: lastPoint.lat,
+        lon: lastPoint.lon,
+        outage: false
+      });
     }
+
+    scheduleTrailUpdate();
+    updatePlaybackTail();
   }
 
   function updatePlaybackPosition(message) {
     if (!Number.isFinite(message.lat) || !Number.isFinite(message.lon)) return;
+    lastPlaybackPosition = { lat: message.lat, lon: message.lon };
+    lastPlaybackOutage = !!message.outage;
+
     var marker = ensurePlaybackMarker(message.lat, message.lon);
-    var element = marker.getElement();
-    element.classList.toggle("outage", !!message.outage);
-    document.getElementById("outageBadge").hidden = !message.outage;
+    marker.getElement().classList.toggle("outage", lastPlaybackOutage);
+    document.getElementById("outageBadge").hidden = !lastPlaybackOutage;
+    updatePlaybackTail();
   }
 
   function endPlaybackView() {
@@ -255,37 +440,42 @@
       playbackMarker.getElement().classList.remove("outage");
     }
     scheduleTrailUpdate();
+    updatePlaybackTail();
+  }
+
+  function restoreCustomLayers() {
+    ensureCustomLayers();
+    updateRouteSource();
+    updatePlaybackSource();
+    renderMarkers(routePoints);
+
+    if (playbackActive) {
+      hideRouteMarkers();
+      if (playbackMarker) {
+        playbackMarker.remove();
+        playbackMarker = null;
+      }
+      if (lastPlaybackPosition) {
+        ensurePlaybackMarker(lastPlaybackPosition.lat, lastPlaybackPosition.lon);
+      }
+    } else {
+      showRouteMarkers();
+    }
+
+    updatePlaybackTail();
   }
 
   function setRoute(message) {
     clearPlayback();
     playbackActive = false;
     routePoints = message.points || [];
+    routeLoop = !!message.loop;
+
     if (Object.prototype.hasOwnProperty.call(message, "selectedId")) {
       selectedId = message.selectedId;
     }
 
-    var coordinates = routePoints.map(function (point) {
-      return [point.lon, point.lat];
-    });
-    if (message.loop && coordinates.length > 1) {
-      coordinates.push([coordinates[0][0], coordinates[0][1]]);
-    }
-
-    var source = map.getSource("route");
-    if (source) {
-      source.setData(coordinates.length >= 2
-        ? {
-            type: "FeatureCollection",
-            features: [{
-              type: "Feature",
-              properties: {},
-              geometry: { type: "LineString", coordinates: coordinates }
-            }]
-          }
-        : emptyRoute());
-    }
-
+    updateRouteSource();
     renderMarkers(routePoints);
   }
 
@@ -305,31 +495,37 @@
     );
   }
 
-  map.on("load", function () {
-    map.addSource("route", { type: "geojson", data: emptyRoute() });
-    map.addLayer({
-      id: "route-casing",
-      type: "line",
-      source: "route",
-      layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": "#0b1220", "line-width": 8, "line-opacity": 0.8 }
+  function sendViewport() {
+    var bounds = map.getBounds();
+    if (!bounds) return;
+    post("viewport", {
+      west: bounds.getWest(),
+      south: bounds.getSouth(),
+      east: bounds.getEast(),
+      north: bounds.getNorth()
     });
-    map.addLayer({
-      id: "route-line",
-      type: "line",
-      source: "route",
-      layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": "#38bdf8", "line-width": 4 }
-    });
+  }
 
-    map.addSource("playback", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-    map.addLayer({
-      id: "playback-line",
-      type: "line",
-      source: "playback",
-      layout: { "line-cap": "round", "line-join": "round" },
-      paint: { "line-color": "#22c55e", "line-width": 5, "line-opacity": 0.95 }
+  function applyBasemap(kind) {
+    if (kind === currentBasemap && map.loaded()) {
+      updateAttribution(kind);
+      return;
+    }
+
+    currentBasemap = kind;
+    updateAttribution(kind);
+    var generation = ++styleGeneration;
+    map.setStyle(styleFor(kind), { diff: false });
+    map.once("style.load", function () {
+      if (generation !== styleGeneration) return;
+      restoreCustomLayers();
+      sendViewport();
     });
+  }
+
+  function initializeMap() {
+    ensureCustomLayers();
+    updateAttribution(currentBasemap);
 
     map.on("click", function (event) {
       if (playbackActive) return;
@@ -339,11 +535,17 @@
     map.on("moveend", function () {
       var center = map.getCenter();
       post("center", { lat: center.lat, lon: center.lng });
+      sendViewport();
     });
 
+    map.on("resize", sendViewport);
+
     var center = map.getCenter();
+    sendViewport();
     post("ready", { lat: center.lat, lon: center.lng });
-  });
+  }
+
+  map.on("load", initializeMap);
 
   if (window.chrome && window.chrome.webview) {
     window.chrome.webview.addEventListener("message", function (event) {
@@ -392,6 +594,14 @@
           break;
         case "playbackEnd":
           endPlaybackView();
+          break;
+        case "setBasemap":
+          applyBasemap(message.basemap || "simple");
+          break;
+        case "followPan":
+          if (Number.isFinite(message.lat) && Number.isFinite(message.lon)) {
+            map.panTo([message.lon, message.lat], { duration: 250 });
+          }
           break;
         default:
           break;

@@ -17,6 +17,8 @@ internal static class AppPaths
 
     public static string SettingsFile => Path.Combine(Root, "settings.json");
 
+    public static string MapSettingsFile => Path.Combine(Root, "map-settings.json");
+
     public static string FavoritesFile => Path.Combine(Root, "favorites.json");
 
     public static string RoutesDirectory => Path.Combine(Root, "routes");

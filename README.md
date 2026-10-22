@@ -32,6 +32,7 @@
   settings.json      裝置名稱等本機設定
   github-token.bin   DPAPI 加密後的 GitHub Token
   sync-cache.json    同步用的 ETag 快取
+  map-settings.json  底圖與跟隨模式設定
 ```
 
 ## 第一次設定 GitHub Token
@@ -86,6 +87,13 @@ Token 會用 Windows DPAPI（CurrentUser）加密後存在本機，畫面只顯�
 4. 可新增 GPS 中斷時段（開始秒數、持續秒數）。
 5. 可搜尋地點（Nominatim，每秒最多一次）、收藏地點、用隨機漫步／環狀產生路線。
 6. 可匯入 GPX／KML、匯出 GPX／KML，或把路線存在 `%LOCALAPPDATA%\GpsTrackerPc\routes\`。
+
+### 底圖與跟隨
+
+- 底圖可選：簡易地圖（OpenFreeMap，預設）、衛星（Esri）、台灣電子地圖（內政部國土測繪中心 NLSC）、無底圖。
+- 底圖選擇會存在本機，下次開啟沿用；右下角會顯示目前底圖的圖資來源。
+- 切換底圖不會清掉路線、路線點、播放軌跡或目前位置。
+- 「跟隨目前位置」預設開啟：只有目前位置進入畫面外圍 15% 時才平移一次，不會每次更新都移動鏡頭，也不會自動改變縮放層級。可以關閉。
 
 ### 播放
 

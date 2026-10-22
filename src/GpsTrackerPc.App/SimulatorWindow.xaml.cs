@@ -50,6 +50,10 @@ public partial class SimulatorWindow : Window
     private PlaybackMapFrame? _pendingFullFrame;
     private bool _mapUpdatesEnabled;
     private int _sentSampleCount;
+    private readonly MapSettingsStore _mapSettingsStore;
+    private BasemapOption _basemap = BasemapCatalog.Default;
+    private bool _followEnabled = true;
+    private ViewportBounds? _viewport;
 
     public SimulatorWindow(TokenStore tokenStore, DeviceNameStore deviceNameStore)
     {
@@ -62,6 +66,10 @@ public partial class SimulatorWindow : Window
         _searchClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         _uploadClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
         _geocoder = new NominatimGeocoder(_searchClient);
+        _mapSettingsStore = new MapSettingsStore(AppPaths.MapSettingsFile);
+        var mapSettings = _mapSettingsStore.Load();
+        _basemap = BasemapCatalog.Options.First(option => option.Kind == mapSettings.Basemap);
+        _followEnabled = mapSettings.Follow;
         _playbackTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(PlaybackMapPolicy.UpdateIntervalMilliseconds),
@@ -70,6 +78,9 @@ public partial class SimulatorWindow : Window
 
         _updatingUi = true;
         RouteNameBox.Text = _route.Name;
+        BasemapBox.ItemsSource = BasemapCatalog.Options;
+        BasemapBox.SelectedValue = _basemap.Value;
+        FollowCheck.IsChecked = _followEnabled;
         _updatingUi = false;
 
         RefreshAllUi(updateName: false);
@@ -152,12 +163,27 @@ public partial class SimulatorWindow : Window
                     ReadCenter(root);
                     LoadingPanel.Visibility = Visibility.Collapsed;
                     SendRoute();
+                    SendBasemap();
                     SetPlaybackControlState();
                     UpdateMapActivity();
                     break;
                 case "center":
                     ReadCenter(root);
                     break;
+                case "viewport":
+                {
+                    var west = GetDouble(root, "west");
+                    var south = GetDouble(root, "south");
+                    var east = GetDouble(root, "east");
+                    var north = GetDouble(root, "north");
+                    if (double.IsFinite(west) && double.IsFinite(south) &&
+                        double.IsFinite(east) && double.IsFinite(north))
+                    {
+                        _viewport = new ViewportBounds(west, south, east, north);
+                    }
+
+                    break;
+                }
                 case "mapClick":
                 {
                     var lat = GetDouble(root, "lat");
@@ -1228,6 +1254,26 @@ public partial class SimulatorWindow : Window
             lon = current.Coordinates.Longitude,
             outage = _playback!.IsInOutage,
         });
+
+        MaybeFollow(current);
+    }
+
+    private void MaybeFollow(RoutePosition current)
+    {
+        if (_viewport == null || !_followEnabled)
+        {
+            return;
+        }
+
+        if (ViewportFollowPolicy.ShouldPan(_viewport, current.Coordinates, _followEnabled))
+        {
+            Post(new
+            {
+                type = "followPan",
+                lat = current.Coordinates.Latitude,
+                lon = current.Coordinates.Longitude,
+            });
+        }
     }
 
     private void UpdatePlaybackUi()
@@ -1285,6 +1331,44 @@ public partial class SimulatorWindow : Window
         laps = parsed;
         return true;
     }
+
+    private void Basemap_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingUi)
+        {
+            return;
+        }
+
+        _basemap = BasemapCatalog.Get(BasemapBox.SelectedValue as string);
+        SaveMapSettings();
+        Post(new { type = "setBasemap", basemap = _basemap.Value });
+        SetStatus($"底圖：{_basemap.Label}");
+    }
+
+    private void Follow_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_updatingUi)
+        {
+            return;
+        }
+
+        _followEnabled = FollowCheck.IsChecked == true;
+        SaveMapSettings();
+    }
+
+    private void SaveMapSettings()
+    {
+        try
+        {
+            _mapSettingsStore.Save(new SimulatorMapSettings(_basemap.Kind, _followEnabled));
+        }
+        catch (Exception ex)
+        {
+            SetStatus("儲存底圖設定失敗：" + ex.Message);
+        }
+    }
+
+    private void SendBasemap() => Post(new { type = "setBasemap", basemap = _basemap.Value });
 
     private void Window_StateChanged(object? sender, EventArgs e) => UpdateMapActivity();
 
