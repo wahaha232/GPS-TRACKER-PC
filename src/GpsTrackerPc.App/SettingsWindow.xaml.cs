@@ -5,6 +5,7 @@ using System.Windows.Media;
 using GpsTrackerPc.App.Infrastructure;
 using GpsTrackerPc.Core.Security;
 using GpsTrackerPc.Core.Simulator;
+using GpsTrackerPc.Core.Updates;
 
 namespace GpsTrackerPc.App;
 
@@ -13,21 +14,28 @@ public partial class SettingsWindow : Window
 {
     private readonly TokenStore _tokenStore;
     private readonly DeviceNameStore _deviceNameStore;
+    private readonly UpdateCheckStore _updateCheckStore;
     private readonly Func<Task> _checkUpdates;
+    private bool _updatingUi;
 
     public SettingsWindow(
         TokenStore tokenStore,
         DeviceNameStore deviceNameStore,
+        UpdateCheckStore updateCheckStore,
         Func<Task> checkUpdates)
     {
         InitializeComponent();
         _tokenStore = tokenStore;
         _deviceNameStore = deviceNameStore;
+        _updateCheckStore = updateCheckStore;
         _checkUpdates = checkUpdates;
         DataPathText.Text = AppPaths.DataDirectory;
         DeviceNameBox.Text = _deviceNameStore.Load();
-        var version = typeof(SettingsWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
-        VersionText.Text = $"目前版本：v{version}";
+        VersionText.Text = $"目前版本：v{AppVersion.Current}";
+        _updatingUi = true;
+        AutoCheckUpdatesCheck.IsChecked = _updateCheckStore.Load().AutoCheckEnabled;
+        _updatingUi = false;
+        RefreshLastCheck();
         RefreshTokenStatus();
     }
 
@@ -85,6 +93,39 @@ public partial class SettingsWindow : Window
     {
         Close();
         await _checkUpdates();
+    }
+
+    private void AutoCheckUpdates_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_updatingUi)
+        {
+            return;
+        }
+
+        try
+        {
+            _updateCheckStore.SetAutoCheck(AutoCheckUpdatesCheck.IsChecked == true);
+            RefreshLastCheck();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                "儲存自動檢查設定失敗：\n\n" + ex.Message,
+                "儲存失敗",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private void RefreshLastCheck()
+    {
+        var state = _updateCheckStore.Load();
+        LastCheckText.Text = state.LastCheckMs is { } lastCheckMs
+            ? "最後檢查更新：" + DateTimeOffset.FromUnixTimeMilliseconds(lastCheckMs)
+                .ToLocalTime()
+                .ToString("yyyy/MM/dd HH:mm")
+            : "最後檢查更新：尚未檢查";
     }
 
     private void RefreshTokenStatus()

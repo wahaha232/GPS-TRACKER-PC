@@ -60,8 +60,10 @@
               Click="Delete_Click" />
     </StackPanel>
 
-    <StackPanel Grid.Row="3"
-                Margin="0,24,0,0">
+    <ScrollViewer Grid.Row="3"
+                  VerticalScrollBarVisibility="Auto"
+                  Margin="0,24,0,0">
+      <StackPanel>
       <Separator Background="#1E293B" />
       <TextBlock Text="本機資料夾"
                  Foreground="#E2E8F0"
@@ -119,7 +121,26 @@
                    VerticalAlignment="Center"
                    Margin="12,0,0,0" />
       </StackPanel>
-    </StackPanel>
+
+      <Separator Background="#1E293B" Margin="0,16,0,0" />
+      <TextBlock Text="雲端更新"
+                 Foreground="#E2E8F0"
+                 FontSize="14"
+                 FontWeight="SemiBold"
+                 Margin="0,16,0,0" />
+      <CheckBox x:Name="AutoCheckUpdatesCheck"
+                Content="啟動時自動檢查更新（一天最多一次）"
+                Foreground="#E2E8F0"
+                Margin="0,8,0,0"
+                Checked="AutoCheckUpdates_Changed"
+                Unchecked="AutoCheckUpdates_Changed" />
+      <TextBlock x:Name="LastCheckText"
+                 Foreground="#94A3B8"
+                 FontSize="12"
+                 TextWrapping="Wrap"
+                 Margin="0,6,0,0" />
+      </StackPanel>
+    </ScrollViewer>
 
     <StackPanel Grid.Row="4"
                 Orientation="Horizontal"

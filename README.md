@@ -112,23 +112,28 @@ Token 會用 Windows DPAPI（CurrentUser）加密後存在本機，畫面只顯�
 
 模擬紀錄會轉成與網站匯入相同的格式；GPS 中斷期間的點不會寫入。上傳沿用 GitHub Contents API，遇到 409／422 會重讀 manifest 合併後重試。
 
-## 自動更新
+## 版本與自動更新
 
-- App 啟動時會檢查一次 `gpstracker-desktop-latest` Release。
-- 設定畫面也有「檢查更新」。
-- 有新版本時會先詢問，不會自動安裝。
+目前版本會顯示在主視窗標題列與設定畫面；版本號以 `GpsTrackerPc.App.csproj` 的 `<Version>` 為唯一來源。
+
+- 主視窗按「檢查雲端更新」會開啟更新畫面，顯示「目前版本 → 新版本」與 Release 更新說明。
+- 按「更新」才會下載安裝；已是最新版會顯示「已是最新版本」。
+- 啟動時一天最多自動檢查一次；有新版只提示，不會自動安裝。設定畫面可以關閉自動檢查，並顯示最後檢查更新時間。
+- 只接受比目前版本新的版本；同版或舊版不會安裝（降版保護）。
 - 下載後會用 Release 附的 SHA-256 檢查；不符合會刪除下載檔。
 - 確認安裝後，舊 EXE 會改名為 `.old`，放入新 EXE 並重新啟動；下次啟動會刪除 `.old`。
 - 任何替換步驟失敗都會還原成舊版。
 
 更新來源：`https://github.com/wahaha232/GPS-TRACKER-PC/releases/tag/gpstracker-desktop-latest`
 
+版本變更記錄請看 `CHANGELOG.md`。
+
 ## 隱私與注意事項
 
 - GPX 匯入與模擬上傳會寫入**公開**的 GitHub 倉庫，路線、時間與裝置名稱任何人都看得到。
 - Token 只存在本機並以 DPAPI 加密；不要把 `github-token.bin` 或 Token 分享給別人。
 - 桌面版沒有拍照、步數與分享功能。
-- 地圖底圖使用 Esri World Imagery，需要網路。
+- 地圖底圖可使用 OpenFreeMap、Esri World Imagery、NLSC 或無底圖；前三種需要網路。
 
 ## 疑難排解
 

@@ -78,6 +78,13 @@
                   Foreground="#E2E8F0"
                   BorderBrush="#334155"
                   Click="Simulator_Click" />
+          <Button Content="檢查雲端更新"
+                  Padding="12,5"
+                  Margin="0,0,8,0"
+                  Background="#1E293B"
+                  Foreground="#E2E8F0"
+                  BorderBrush="#334155"
+                  Click="CheckCloudUpdates_Click" />
           <Button Content="設定"
                   Padding="12,5"
                   Background="#1E293B"

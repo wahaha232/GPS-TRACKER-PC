@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -40,9 +41,13 @@ public sealed class UpdateService
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, LatestApiUrl);
         AddHeaders(request);
-        using var response = await _httpClient
-            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-            .ConfigureAwait(false);
+        using var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new UpdateException(
+                "找不到更新 Release（HTTP 404），可能尚未建立，或 GitHub repo 還不存在。");
+        }
+
         if (!response.IsSuccessStatusCode)
         {
             throw new UpdateException($"查詢更新失敗（HTTP {(int)response.StatusCode}）");
@@ -159,9 +164,7 @@ public sealed class UpdateService
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
             using var request = new HttpRequestMessage(HttpMethod.Get, update.DownloadUrl);
             AddHeaders(request);
-            using var response = await _httpClient
-                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-                .ConfigureAwait(false);
+            using var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 throw new UpdateException($"下載更新失敗（HTTP {(int)response.StatusCode}）");
@@ -235,9 +238,7 @@ public sealed class UpdateService
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         AddHeaders(request);
-        using var response = await _httpClient
-            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-            .ConfigureAwait(false);
+        using var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
             throw new UpdateException($"下載 SHA-256 檢查碼失敗（HTTP {(int)response.StatusCode}）");
@@ -251,6 +252,26 @@ public sealed class UpdateService
         }
 
         return match.Value.ToLowerInvariant();
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _httpClient
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new UpdateException("無法連線到 GitHub：" + ex.Message);
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new UpdateException("連線 GitHub 逾時：" + ex.Message);
+        }
     }
 
     private void AddHeaders(HttpRequestMessage request)

@@ -92,6 +92,45 @@ public class UpdateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CheckReturnsNullForOlderVersion()
+    {
+        var handler = new FakeHandler();
+        handler.Routes[UpdateService.LatestApiUrl] = () => JsonResponse(ReleaseJson("0.0.9"));
+        var service = new UpdateService(new HttpClient(handler));
+
+        var update = await service.CheckAsync("0.2.0");
+
+        Assert.Null(update);
+    }
+
+    [Fact]
+    public async Task MissingReleaseGivesClear404Message()
+    {
+        var handler = new FakeHandler();
+        handler.Routes[UpdateService.LatestApiUrl] =
+            () => new HttpResponseMessage(HttpStatusCode.NotFound);
+        var service = new UpdateService(new HttpClient(handler));
+
+        var error = await Assert.ThrowsAsync<UpdateException>(() => service.CheckAsync("0.2.0"));
+
+        Assert.Contains("404", error.Message);
+        Assert.Contains("Release", error.Message);
+    }
+
+    [Fact]
+    public async Task NetworkFailureGivesClearMessage()
+    {
+        var handler = new FakeHandler();
+        handler.Routes[UpdateService.LatestApiUrl] =
+            () => throw new HttpRequestException("offline");
+        var service = new UpdateService(new HttpClient(handler));
+
+        var error = await Assert.ThrowsAsync<UpdateException>(() => service.CheckAsync("0.2.0"));
+
+        Assert.Contains("無法連線", error.Message);
+    }
+
+    [Fact]
     public async Task CheckRejectsUnsafeDownloadUrl()
     {
         var handler = new FakeHandler();

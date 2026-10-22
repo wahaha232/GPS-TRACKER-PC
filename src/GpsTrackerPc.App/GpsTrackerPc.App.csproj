@@ -6,7 +6,7 @@
     <UseWPF>true</UseWPF>
     <RootNamespace>GpsTrackerPc.App</RootNamespace>
     <AssemblyName>GpsTrackerPc</AssemblyName>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
