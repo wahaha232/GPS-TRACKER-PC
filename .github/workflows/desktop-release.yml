@@ -50,6 +50,9 @@ jobs:
             $releaseName = ($releaseJson | ConvertFrom-Json).name
           }
 
+          # Release 還不存在時 gh 會回非 0；不清掉會讓這一步在成功後仍以 1 結束。
+          $global:LASTEXITCODE = 0
+
           $guardJson = & "$env:GITHUB_WORKSPACE\scripts\release-guard.ps1" `
             -ProjectPath "$env:GITHUB_WORKSPACE\src\GpsTrackerPc.App\GpsTrackerPc.App.csproj" `
             -ChangelogPath "$env:GITHUB_WORKSPACE\CHANGELOG.md" `
