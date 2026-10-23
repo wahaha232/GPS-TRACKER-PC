@@ -352,8 +352,21 @@ public partial class ImportWindow : Window
         AddFilesButton.IsEnabled = !busy;
         ModeBox.IsEnabled = !busy;
         CloseButton.IsEnabled = !busy;
+        CancelButton.IsEnabled = busy;
         ImportButton.Content = busy ? "匯入中…" : "開始匯入";
         ImportButton.IsEnabled = !busy && _tokenStore.HasToken && Rows.Any(row => row.IsValid);
+    }
+
+    private void CancelImport_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_importing || _cts == null || _cts.IsCancellationRequested)
+        {
+            return;
+        }
+
+        _cts.Cancel();
+        CancelButton.IsEnabled = false;
+        StatusText.Text = "正在取消匯入…（已完成的紀錄會保留）";
     }
 
     private void Window_DragOver(object sender, DragEventArgs e)
@@ -376,7 +389,13 @@ public partial class ImportWindow : Window
     {
         if (_importing)
         {
-            MessageBox.Show(this, "匯入進行中，請等這一輪結束。", "匯入中", MessageBoxButton.OK, MessageBoxImage.Information);
+            _cts?.Cancel();
+            MessageBox.Show(
+                this,
+                "已送出取消，請等目前這一筆結束後再關閉。",
+                "取消匯入",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
             return;
         }
 
@@ -388,7 +407,8 @@ public partial class ImportWindow : Window
         if (_importing)
         {
             e.Cancel = true;
-            MessageBox.Show(this, "匯入進行中，請等這一輪結束。", "匯入中", MessageBoxButton.OK, MessageBoxImage.Information);
+            _cts?.Cancel();
+            StatusText.Text = "正在取消匯入，完成後即可關閉。";
         }
     }
 

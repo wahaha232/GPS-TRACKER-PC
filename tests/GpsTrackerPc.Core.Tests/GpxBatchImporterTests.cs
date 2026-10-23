@@ -65,6 +65,28 @@ public class GpxBatchImporterTests
         Assert.Equal("GitHub API 500", results[0].Message);
     }
 
+    [Fact]
+    public async Task CancellationStopsFurtherUploads()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var uploader = new CancellingUploader(cancellation);
+        var batch = new GpxImportBatch(uploader);
+        var progress = new RecordingProgress();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            batch.ImportAsync(
+                new[]
+                {
+                    new GpxImportCandidate("a.gpx", Build("a")),
+                    new GpxImportCandidate("b.gpx", Build("b")),
+                },
+                progress,
+                cancellation.Token));
+
+        Assert.Equal(new[] { "a" }, uploader.Calls);
+        Assert.Equal(new[] { 0 }, progress.Indices);
+    }
+
     private static GpxBuildResult Build(string id)
     {
         const string xml =
@@ -95,6 +117,27 @@ public class GpxBatchImporterTests
             Calls.Add(build.Entry!.TrackId);
             var response = _responses.Dequeue();
             return Task.FromResult(response(build));
+        }
+    }
+
+    private sealed class CancellingUploader : IRecordUploader
+    {
+        private readonly CancellationTokenSource _cancellation;
+
+        public CancellingUploader(CancellationTokenSource cancellation)
+        {
+            _cancellation = cancellation;
+        }
+
+        public List<string> Calls { get; } = new();
+
+        public Task<UploadResult> UploadAsync(
+            GpxBuildResult build,
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add(build.Entry!.TrackId);
+            _cancellation.Cancel();
+            return Task.FromResult(UploadResult.Uploaded(build.Entry.TrackId));
         }
     }
 
