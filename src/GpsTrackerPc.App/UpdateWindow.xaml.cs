@@ -60,7 +60,7 @@ public partial class UpdateWindow : Window
         }
         catch (Exception ex)
         {
-            MarkChecked();
+            // 失敗不記錄檢查時間，讓下次自動檢查還會再試。
             ShowError("檢查失敗：" + ex.Message);
         }
         finally
@@ -132,6 +132,13 @@ public partial class UpdateWindow : Window
             if (string.IsNullOrWhiteSpace(fileName))
             {
                 ShowError("更新檔名不正確，已取消。");
+                return;
+            }
+
+            // 目前只支援單一 EXE；ZIP 直接覆蓋 EXE 會損壞安裝。
+            if (!string.Equals(Path.GetExtension(fileName), ".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                ShowError("這個 Release 只提供 ZIP，無法自動更新。請手動下載解壓縮後覆蓋程式。");
                 return;
             }
 

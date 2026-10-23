@@ -18,6 +18,12 @@ public static class UpdateInstaller
             return new UpdateApplyResult(false, "找不到下載的更新檔");
         }
 
+        // 只接受 EXE；舊版 Release 若只提供 ZIP，直接覆蓋 EXE 會讓程式再也開不起來。
+        if (!string.Equals(Path.GetExtension(downloadedFilePath), ".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return new UpdateApplyResult(false, "更新檔不是 EXE，已停止安裝：" + Path.GetFileName(downloadedFilePath));
+        }
+
         if (!File.Exists(currentExePath))
         {
             return new UpdateApplyResult(false, "找不到目前的執行檔");

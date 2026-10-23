@@ -49,6 +49,22 @@ public class UpdateInstallerTests : IDisposable
     }
 
     [Fact]
+    public void NonExeDownloadIsRejectedWithoutChangingAnything()
+    {
+        var zipPath = Path.Combine(_root, "update.zip");
+        File.WriteAllText(zipPath, "zip-content");
+        var restarted = false;
+
+        var result = UpdateInstaller.Apply(zipPath, _currentExe, () => restarted = true);
+
+        Assert.False(result.Success);
+        Assert.Contains("EXE", result.ErrorMessage);
+        Assert.False(restarted);
+        Assert.Equal("old-version", File.ReadAllText(_currentExe));
+        Assert.False(File.Exists(_currentExe + ".old"));
+    }
+
+    [Fact]
     public void RestartFailureRestoresTheOldExe()
     {
         var result = UpdateInstaller.Apply(

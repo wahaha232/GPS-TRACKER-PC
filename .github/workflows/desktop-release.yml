@@ -60,6 +60,33 @@ jobs:
           "VERSION=$($guard.Version)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "版本檢查通過：v$($guard.Version)"
 
+      - name: Verify web source folder
+        shell: pwsh
+        run: |
+          # 單檔發佈會把網頁內嵌進 EXE，publish\ 不會有 web 資料夾；
+          # 所以要檢查真正被複製進去的來源資料夾，而不是發佈輸出。
+          $web = $env:WebSourceRoot
+          if ([string]::IsNullOrWhiteSpace($web) -or -not (Test-Path -LiteralPath $web -PathType Container)) {
+            throw "找不到 WebSourceRoot：$web（sparse-checkout 沒有取到 gpstracker-web）"
+          }
+
+          $index = Join-Path $web "index.html"
+          if (-not (Test-Path -LiteralPath $index -PathType Leaf)) {
+            throw "網頁來源缺少 index.html：$index"
+          }
+
+          # 這些資料夾出現在來源就代表 WebSourceRoot 指錯層級（整個 repo 被包進 web\）。
+          $forbidden = @("gpstracker-web", "GPSTracker", "Calculator", "HealthTracker", "WEATHER APP_V2", ".git")
+          $bad = @(Get-ChildItem -LiteralPath $web -Directory -Recurse -Force |
+            Where-Object { $forbidden -contains $_.Name })
+          if ($bad.Count -gt 0) {
+            $names = ($bad | ForEach-Object { $_.FullName.Substring($web.Length).TrimStart('\') }) -join "、"
+            throw "WebSourceRoot 裡有不該出現的資料夾：$names"
+          }
+
+          $fileCount = @(Get-ChildItem -LiteralPath $web -Recurse -File).Count
+          Write-Host "網頁來源檢查通過：$index，共 $fileCount 個檔案"
+
       - name: Publish Windows x64
         run: >
           dotnet publish src/GpsTrackerPc.App/GpsTrackerPc.App.csproj
@@ -72,31 +99,6 @@ jobs:
           -p:DebugType=None
           -p:DebugSymbols=false
           -o publish
-
-      - name: Verify packaged web folder
-        shell: pwsh
-        run: |
-          $web = Join-Path $env:GITHUB_WORKSPACE "publish\web"
-          if (-not (Test-Path -LiteralPath $web -PathType Container)) {
-            throw "找不到 publish\web：網頁沒有一起打包"
-          }
-
-          $index = Join-Path $web "index.html"
-          if (-not (Test-Path -LiteralPath $index -PathType Leaf)) {
-            throw "打包缺少 web\index.html，程式打開會是空白頁"
-          }
-
-          # 這些資料夾出現在 web\ 就代表打包範圍錯了（整個 repo 或別的 App 被包進來）。
-          $forbidden = @("gpstracker-web", "GPSTracker", "Calculator", "HealthTracker", "WEATHER APP_V2", ".git")
-          $bad = @(Get-ChildItem -LiteralPath $web -Directory -Recurse -Force |
-            Where-Object { $forbidden -contains $_.Name })
-          if ($bad.Count -gt 0) {
-            $names = ($bad | ForEach-Object { $_.FullName.Substring($web.Length).TrimStart('\') }) -join "、"
-            throw "web\ 裡有不該出現的資料夾：$names"
-          }
-
-          $fileCount = @(Get-ChildItem -LiteralPath $web -Recurse -File).Count
-          Write-Host "網頁打包檢查通過：web\index.html 存在，共 $fileCount 個檔案"
 
       - name: Package and checksum
         shell: pwsh

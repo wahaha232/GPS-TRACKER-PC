@@ -148,6 +148,46 @@ public class GitHubRecordUploaderTests : IDisposable
     }
 
     [Fact]
+    public async Task DuplicateAddedDuringConflictMergeIsSkipped()
+    {
+        var handler = new FakeGitHubHandler();
+        handler.AddFile(ManifestPath, """{"tracks":[]}""");
+        handler.FailPutPath = ManifestPath;
+        handler.FailPutCount = 1;
+        var build = BuildSample();
+        handler.AfterFailedPut = () =>
+        {
+            // 模擬另一台電腦在我們重試前寫入了同一段活動（不同 trackId）。
+            handler.AddFile(
+                ManifestPath,
+                new JsonObject
+                {
+                    ["tracks"] = new JsonArray
+                    {
+                        new JsonObject
+                        {
+                            ["trackId"] = "raced",
+                            ["startTimeMs"] = build.Entry!.StartTimeMs + 1000,
+                            ["distanceMeters"] = build.Entry.DistanceMeters + 1,
+                        },
+                    },
+                }.ToJsonString());
+        };
+        var uploader = CreateUploader(handler);
+
+        var result = await uploader.UploadAsync(build);
+
+        Assert.Equal(UploadStatus.Duplicate, result.Status);
+        var manifest = JsonNode.Parse(handler.Files[ManifestPath].Content)!.AsObject();
+        var trackIds = manifest["tracks"]!.AsArray()
+            .Select(track => track!["trackId"]!.GetValue<string>())
+            .ToList();
+        Assert.Equal(new[] { "raced" }, trackIds);
+        Assert.Equal(1, handler.Requests.Count(request =>
+            request.Method == "PUT" && request.Path == ManifestPath));
+    }
+
+    [Fact]
     public async Task TrackConflictReReadsShaAndRetries()
     {
         var handler = new FakeGitHubHandler();
@@ -264,6 +304,9 @@ public class GitHubRecordUploaderTests : IDisposable
 
         public HttpStatusCode? FailGetStatus { get; set; }
 
+        /// <summary>PUT 失敗後執行，用來模擬其他電腦在重試前寫入資料。</summary>
+        public Action? AfterFailedPut { get; set; }
+
         public void AddFile(string path, string content)
         {
             Files[path] = new FakeFile(content, Guid.NewGuid().ToString("N"));
@@ -309,6 +352,7 @@ public class GitHubRecordUploaderTests : IDisposable
                 if (path == FailPutPath && FailPutCount > 0)
                 {
                     FailPutCount--;
+                    AfterFailedPut?.Invoke();
                     return new HttpResponseMessage(FailPutStatus);
                 }
 

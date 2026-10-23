@@ -129,6 +129,7 @@ public class DataSyncServiceTests : IDisposable
         _handler.Add("b.json", "old-b", "b1");
         var service = CreateService();
         await service.SyncAsync();
+        var oldManifest = ReadData("manifest.json");
 
         _handler.Add("manifest.json", Manifest(("track-a", "a.json"), ("track-b", "b.json")), "m2");
         _handler.Add("b.json", "new-b", "b2");
@@ -139,9 +140,34 @@ public class DataSyncServiceTests : IDisposable
         Assert.Equal(1, result.FailedCount);
         Assert.Equal("old-a", ReadData("a.json"));
         Assert.Equal("new-b", ReadData("b.json"));
-        Assert.True(result.UpdatedCount >= 2, "manifest 與 b.json 都應更新");
+        // 有紀錄檔下載失敗時不覆蓋 manifest，避免本機 manifest 指向抓不下來的檔案。
+        Assert.Equal(oldManifest, ReadData("manifest.json"));
         Assert.Contains(result.Errors, error => error.Contains("a.json", StringComparison.Ordinal));
+        Assert.Contains(result.Errors, error => error.Contains("manifest", StringComparison.Ordinal));
         AssertNoTempFiles();
+    }
+
+    [Fact]
+    public async Task ManifestIsWrittenAfterFailedTrackRecovers()
+    {
+        _handler.Add("manifest.json", Manifest(("track-a", "a.json")), "m1");
+        _handler.Add("a.json", "old-a", "a1");
+        var service = CreateService();
+        await service.SyncAsync();
+
+        _handler.Add("manifest.json", Manifest(("track-a", "a.json"), ("track-b", "b.json")), "m2");
+        _handler.Add("b.json", "new-b", "b2");
+        _handler.FailingFiles.Add("b.json");
+        var failed = await service.SyncAsync();
+        Assert.False(failed.Success);
+
+        _handler.FailingFiles.Clear();
+        var recovered = await service.SyncAsync();
+
+        Assert.True(recovered.Success, string.Join("；", recovered.Errors));
+        var manifest = ReadData("manifest.json");
+        Assert.Contains("b.json", manifest, StringComparison.Ordinal);
+        Assert.Equal("new-b", ReadData("b.json"));
     }
 
     [Fact]

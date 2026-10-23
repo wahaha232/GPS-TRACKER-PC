@@ -120,32 +120,48 @@ public sealed class GitHubRecordUploader : IRecordUploader
             var entryNode = JsonNode.Parse(GpxJson.SerializeEntry(build.Entry))
                 ?? throw new InvalidDataException("manifest 項目序列化失敗。");
 
-            await UpdateJsonAsync(
-                manifestPath,
-                () => new JsonObject { ["tracks"] = new JsonArray() },
-                node =>
-                {
-                    if (node["tracks"] is not JsonArray tracks)
+            try
+            {
+                await UpdateJsonAsync(
+                    manifestPath,
+                    () => new JsonObject { ["tracks"] = new JsonArray() },
+                    node =>
                     {
-                        tracks = new JsonArray();
-                        node["tracks"] = tracks;
-                    }
+                        if (node["tracks"] is not JsonArray tracks)
+                        {
+                            tracks = new JsonArray();
+                            node["tracks"] = tracks;
+                        }
 
-                    var exists = tracks
-                        .OfType<JsonObject>()
-                        .Any(item => item["trackId"]?.GetValue<string>() == build.Entry.TrackId);
-                    if (!exists)
-                    {
-                        tracks.Add(entryNode.DeepClone());
-                    }
+                        // 另一台電腦可能剛好也在匯入同一段活動：合併時用最新的 manifest 再檢查一次，
+                        // 符合「開始時間＋距離」就不要再加入第二筆。
+                        if (GpxTrackBuilder.IsDuplicate(
+                                ReadTrackIdentities(node),
+                                new TrackIdentity(build.Entry.StartTimeMs, build.Entry.DistanceMeters)))
+                        {
+                            throw new MergeDuplicateException();
+                        }
 
-                    node["updatedAt"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    return node;
-                },
-                "GPS Tracker: update manifest after GPX import",
-                pretty: false,
-                token,
-                cancellationToken).ConfigureAwait(false);
+                        var exists = tracks
+                            .OfType<JsonObject>()
+                            .Any(item => item["trackId"]?.GetValue<string>() == build.Entry.TrackId);
+                        if (!exists)
+                        {
+                            tracks.Add(entryNode.DeepClone());
+                        }
+
+                        node["updatedAt"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                        return node;
+                    },
+                    "GPS Tracker: update manifest after GPX import",
+                    pretty: false,
+                    token,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (MergeDuplicateException)
+            {
+                return UploadResult.Duplicate(build.Entry.TrackId);
+            }
 
             if (!string.IsNullOrWhiteSpace(build.Summary?.Name))
             {
@@ -500,4 +516,9 @@ public sealed class GitHubRecordUploader : IRecordUploader
     private sealed record GitHubFile(string Content, string Sha);
 
     private sealed record PutOutcome(bool Success, HttpStatusCode StatusCode, string Body);
+
+    /// <summary>合併 manifest 時發現另一台電腦已寫入同一段活動，中止這次寫入。</summary>
+    private sealed class MergeDuplicateException : Exception
+    {
+    }
 }

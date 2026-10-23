@@ -136,7 +136,7 @@ public partial class SimulatedUploadWindow : Window
                     StatusText.Text = "已上傳。GitHub Pages 約 1 分鐘後生效。";
                     MessageBox.Show(
                         this,
-                        "模擬紀錄已上傳（deviceName: PC、source: simulated）。\n\nGitHub Pages 約 1 分鐘後生效。",
+                        $"模擬紀錄已上傳（deviceName: {_deviceName}、source: simulated）。\n\nGitHub Pages 約 1 分鐘後生效。",
                         "上傳完成",
                         MessageBoxButton.OK,
                         MessageBoxImage.Information);

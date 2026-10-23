@@ -119,18 +119,13 @@ public partial class ImportWindow : Window
             try
             {
                 var text = await File.ReadAllTextAsync(path);
-                var (parsed, build) = await Task.Run(() =>
-                {
-                    var document = GpxTrackBuilder.Parse(text);
-                    var result = GpxTrackBuilder.Build(
-                        document,
-                        new GpxBuildOptions
-                        {
-                            Id = Guid.NewGuid().ToString(),
-                            Mode = "UNKNOWN",
-                        });
-                    return (document, result);
-                });
+                var build = await Task.Run(() => GpxTrackBuilder.Build(
+                    GpxTrackBuilder.Parse(text),
+                    new GpxBuildOptions
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        Mode = "UNKNOWN",
+                    }));
 
                 row.TrackId = build.Entry?.TrackId ?? Guid.NewGuid().ToString();
                 if (build.Error != null)
@@ -140,7 +135,6 @@ public partial class ImportWindow : Window
                 else
                 {
                     var summary = build.Summary!;
-                    row.Parsed = parsed;
                     row.IsValid = true;
                     row.DateText = FormatDate(summary.StartTimeMs);
                     row.DistanceText = (summary.DistanceMeters / 1000.0)
@@ -152,6 +146,7 @@ public partial class ImportWindow : Window
                         : "0";
                     row.Status = "待匯入";
                 }
+                // 摘要建立後就不保留整份點陣列；真正匯入時再讀一次檔案，避免多個大檔佔滿記憶體。
             }
             catch (Exception ex)
             {
@@ -184,7 +179,7 @@ public partial class ImportWindow : Window
             return;
         }
 
-        var validRows = Rows.Where(row => row.IsValid && row.Parsed != null).ToList();
+        var validRows = Rows.Where(row => row.IsValid).ToList();
         if (validRows.Count == 0)
         {
             MessageBox.Show(this, "目前沒有可匯入的檔案。", "沒有檔案", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -206,41 +201,90 @@ public partial class ImportWindow : Window
 
         var mode = ModeBox.SelectedValue as string ?? "UNKNOWN";
         var deviceName = _deviceNameStore.Load();
-        var candidates = validRows
-            .Select(row =>
-            {
-                var build = GpxTrackBuilder.Build(
-                    row.Parsed,
-                    new GpxBuildOptions
-                    {
-                        Id = row.TrackId,
-                        Mode = mode,
-                    });
-                RecordDeviceNaming.ApplyDeviceName(build, deviceName);
-                return new GpxImportCandidate(row.FileName, build);
-            })
-            .ToList();
 
         _importing = true;
         _cts = new CancellationTokenSource();
         SetBusy(true);
         Progress.Minimum = 0;
-        Progress.Maximum = candidates.Count;
+        Progress.Maximum = validRows.Count;
         Progress.Value = 0;
-        StatusText.Text = "匯入中…";
-
-        var progress = new Progress<GpxImportProgress>(item =>
-        {
-            if (item.Index >= 0 && item.Index < validRows.Count)
-            {
-                ApplyResult(validRows[item.Index], item.Result);
-                Progress.Value = item.Index + 1;
-                StatusText.Text = $"匯入中… {item.Index + 1} / {validRows.Count}（{validRows[item.Index].FileName}）";
-            }
-        });
+        StatusText.Text = "讀取並準備匯入資料…";
 
         try
         {
+            // 一次只讀一個檔案，解析完就丟掉原始點陣列；不要像以前那樣把每份 GpxDocument
+            // 都留在清單裡，否則多個大檔會把記憶體撐爆。
+            var preparedRows = new List<ImportRow>(validRows.Count);
+            var candidates = new List<GpxImportCandidate>(validRows.Count);
+            foreach (var row in validRows)
+            {
+                _cts.Token.ThrowIfCancellationRequested();
+                var sizeCheck = GpxImportFileGuard.Check(row.FilePath);
+                if (!sizeCheck.IsAllowed)
+                {
+                    row.IsValid = false;
+                    row.Status = "略過：" + sizeCheck.ErrorMessage;
+                    continue;
+                }
+
+                try
+                {
+                    var build = await Task.Run(
+                        () =>
+                        {
+                            var text = File.ReadAllText(row.FilePath);
+                            var result = GpxTrackBuilder.Build(
+                                GpxTrackBuilder.Parse(text),
+                                new GpxBuildOptions
+                                {
+                                    Id = row.TrackId,
+                                    Mode = mode,
+                                });
+                            RecordDeviceNaming.ApplyDeviceName(result, deviceName);
+                            return result;
+                        },
+                        _cts.Token);
+
+                    if (!build.IsSuccess)
+                    {
+                        row.IsValid = false;
+                        row.Status = "解析失敗：" + GpxErrors.Get(build.Error!);
+                        continue;
+                    }
+
+                    preparedRows.Add(row);
+                    candidates.Add(new GpxImportCandidate(row.FileName, build));
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    row.IsValid = false;
+                    row.Status = "讀取失敗：" + ex.Message;
+                }
+            }
+
+            if (candidates.Count == 0)
+            {
+                StatusText.Text = "沒有可匯入的檔案。";
+                return;
+            }
+
+            Progress.Maximum = candidates.Count;
+            StatusText.Text = "匯入中…";
+
+            var progress = new Progress<GpxImportProgress>(item =>
+            {
+                if (item.Index >= 0 && item.Index < preparedRows.Count)
+                {
+                    ApplyResult(preparedRows[item.Index], item.Result);
+                    Progress.Value = item.Index + 1;
+                    StatusText.Text = $"匯入中… {item.Index + 1} / {preparedRows.Count}（{preparedRows[item.Index].FileName}）";
+                }
+            });
+
             var results = await new GpxImportBatch(_uploader)
                 .ImportAsync(candidates, progress, _cts.Token);
 
@@ -248,10 +292,10 @@ public partial class ImportWindow : Window
             var duplicate = 0;
             var failed = 0;
             var parseError = 0;
-            for (var index = 0; index < results.Count && index < validRows.Count; index++)
+            for (var index = 0; index < results.Count && index < preparedRows.Count; index++)
             {
                 var result = results[index];
-                ApplyResult(validRows[index], result);
+                ApplyResult(preparedRows[index], result);
                 switch (result.Status)
                 {
                     case GpxImportItemStatus.Uploaded:
@@ -385,8 +429,6 @@ public sealed class ImportRow : INotifyPropertyChanged
     public string SkippedText { get; set; } = string.Empty;
 
     public bool IsValid { get; set; }
-
-    public GpxDocument? Parsed { get; set; }
 
     public string Status
     {

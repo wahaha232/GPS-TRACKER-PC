@@ -5,13 +5,15 @@ using System.Windows.Threading;
 using GpsTrackerPc.App.Infrastructure;
 using GpsTrackerPc.Core.Appearance;
 using GpsTrackerPc.Core.Settings;
-using GpsTrackerPc.Core.Updates;
 
 namespace GpsTrackerPc.App;
 
 public partial class App : Application
 {
     private bool _crashReported;
+
+    /// <summary>設定的本機資料夾無法使用時，這裡會有提示文字，主視窗載入後顯示。</summary>
+    public static string? StartupDataDirectoryWarning { get; private set; }
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -26,15 +28,16 @@ public partial class App : Application
         var storage = new StorageSettingsStore(AppPaths.StorageSettingsFile).Load();
         if (!string.IsNullOrWhiteSpace(storage.DataDirectory))
         {
-            AppPaths.TryApplyDataDirectory(storage.DataDirectory, out _);
+            if (!AppPaths.TryApplyDataDirectory(storage.DataDirectory, out var error))
+            {
+                StartupDataDirectoryWarning =
+                    $"設定的本機資料夾無法使用，已改用預設資料夾：\n{AppPaths.DefaultDataDirectory}\n\n" +
+                    $"原因：{error}\n\n紀錄清單可能是空的，請到設定畫面重新選擇資料夾。";
+            }
         }
 
-        // 上次更新成功後留下的 .old 在這裡清掉。
-        var executable = Environment.ProcessPath;
-        if (!string.IsNullOrWhiteSpace(executable))
-        {
-            UpdateInstaller.CleanupOldVersion(executable);
-        }
+        // 上次更新留下的 .old 不在這裡刪：要等新版本真的啟動成功，
+        // 由主視窗在網頁載入完成後呼叫 UpdateInstaller.CleanupOldVersion。
 
         base.OnStartup(e);
     }

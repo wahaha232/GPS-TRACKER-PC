@@ -116,24 +116,16 @@ public sealed class DataSyncService
             return Failure($"{ManifestFileName} 格式錯誤：{ex.Message}");
         }
 
-        if (manifest.Status != FetchStatus.NotModified)
-        {
-            AtomicFile.WriteAllBytes(GetTargetPath(ManifestFileName), manifest.Bytes!);
-            Remember(ManifestFileName, manifest);
-            if (manifest.Status == FetchStatus.Downloaded)
-            {
-                downloaded++;
-            }
-            else
-            {
-                updated++;
-            }
-        }
-
+        var requiredFailed = 0;
         foreach (var fileName in trackFiles)
         {
             var outcome = await TryFetchAsync(fileName, optional: false, needBytes: false, cancellationToken)
                 .ConfigureAwait(false);
+            if (outcome.Status == FetchStatus.Failed)
+            {
+                requiredFailed++;
+            }
+
             Apply(outcome, fileName);
         }
 
@@ -142,6 +134,30 @@ public sealed class DataSyncService
             var outcome = await TryFetchAsync(fileName, optional: true, needBytes: false, cancellationToken)
                 .ConfigureAwait(false);
             Apply(outcome, fileName);
+        }
+
+        // manifest 要等紀錄檔都下載完才寫入；否則中斷或個別檔案失敗時，
+        // 本機 manifest 會列出不存在的檔案，網頁讀取該紀錄就會失敗。
+        if (manifest.Status != FetchStatus.NotModified)
+        {
+            if (requiredFailed == 0)
+            {
+                AtomicFile.WriteAllBytes(GetTargetPath(ManifestFileName), manifest.Bytes!);
+                Remember(ManifestFileName, manifest);
+                if (manifest.Status == FetchStatus.Downloaded)
+                {
+                    downloaded++;
+                }
+                else
+                {
+                    updated++;
+                }
+            }
+            else
+            {
+                errors.Add(
+                    $"{ManifestFileName}：{requiredFailed} 個紀錄檔下載失敗，保留本機舊 manifest");
+            }
         }
 
         try

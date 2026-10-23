@@ -66,6 +66,7 @@ public partial class MainWindow : Window
     private readonly object _syncStateLock = new();
 
     private bool _startupUpdateCheckAttempted;
+    private bool _oldVersionCleaned;
     private bool _pageLoaded;
     private bool _navigationStarted;
     private bool _pendingReload;
@@ -122,6 +123,16 @@ public partial class MainWindow : Window
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        if (App.StartupDataDirectoryWarning is { } dataWarning)
+        {
+            MessageBox.Show(
+                this,
+                dataWarning,
+                "資料夾無法使用",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+
         // 先開始同步，讓 WebView2 初始化與資料下載並行；完成後如果有變更會重新載入頁面。
         _ = RunSyncAsync(automatic: true);
 
@@ -356,6 +367,7 @@ public partial class MainWindow : Window
         {
             _pageLoaded = true;
             LoadingPanel.Visibility = Visibility.Collapsed;
+            CleanupOldVersionOnce();
             if (_pendingReload)
             {
                 _pendingReload = false;
@@ -395,6 +407,22 @@ public partial class MainWindow : Window
         if (e.ProcessFailedKind == CoreWebView2ProcessFailedKind.BrowserProcessExited)
         {
             ShowError("WebView2 瀏覽器程序已結束。請重新啟動 App。");
+        }
+    }
+
+    /// <summary>新版本真正把首頁載入成功後才刪掉上一個版本，啟動失敗才留有還原機會。</summary>
+    private void CleanupOldVersionOnce()
+    {
+        if (_oldVersionCleaned)
+        {
+            return;
+        }
+
+        _oldVersionCleaned = true;
+        var executable = Environment.ProcessPath;
+        if (!string.IsNullOrWhiteSpace(executable))
+        {
+            UpdateInstaller.CleanupOldVersion(executable);
         }
     }
 
@@ -587,18 +615,17 @@ public partial class MainWindow : Window
         }
         catch (Exception)
         {
-            // 啟動檢查失敗不跳錯誤視窗，避免打擾。
+            // 啟動檢查失敗不跳錯誤視窗；也不記錄檢查時間，下次啟動會再試。
+            return;
         }
-        finally
+
+        try
         {
-            try
-            {
-                _updateCheckStore.MarkChecked(now);
-            }
-            catch (Exception)
-            {
-                // 記錄時間失敗不影響 App。
-            }
+            _updateCheckStore.MarkChecked(now);
+        }
+        catch (Exception)
+        {
+            // 記錄時間失敗不影響 App。
         }
 
         if (update == null)

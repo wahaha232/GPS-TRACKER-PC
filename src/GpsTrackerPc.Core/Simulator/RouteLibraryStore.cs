@@ -38,7 +38,7 @@ public sealed class RouteLibraryStore
         {
             return RouteJsonCodec.Decode(File.ReadAllText(path));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
         {
             return null;
         }
@@ -62,7 +62,7 @@ public sealed class RouteLibraryStore
                     routes.Add(route);
                 }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
             {
                 // 單一檔案壞掉不影響其他路線。
             }
