@@ -133,10 +133,13 @@ public partial class SimulatedUploadWindow : Window
                     Uploaded = true;
                     _busy = false;
                     SetBusy(false);
-                    StatusText.Text = "已上傳。GitHub Pages 約 1 分鐘後生效。";
+                    StatusText.Text = string.IsNullOrWhiteSpace(result.Warning)
+                        ? "已上傳。GitHub Pages 約 1 分鐘後生效。"
+                        : "已上傳，但" + result.Warning;
                     MessageBox.Show(
                         this,
-                        $"模擬紀錄已上傳（deviceName: {_deviceName}、source: simulated）。\n\nGitHub Pages 約 1 分鐘後生效。",
+                        $"模擬紀錄已上傳（deviceName: {_deviceName}、source: simulated）。\n\nGitHub Pages 約 1 分鐘後生效。" +
+                        (string.IsNullOrWhiteSpace(result.Warning) ? string.Empty : "\n\n注意：" + result.Warning),
                         "上傳完成",
                         MessageBoxButton.OK,
                         MessageBoxImage.Information);

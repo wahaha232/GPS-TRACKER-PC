@@ -62,7 +62,12 @@ public sealed class GpxImportBatch
                     result = upload.Status switch
                     {
                         UploadStatus.Uploaded => new GpxImportItemResult(
-                            candidate.FileName, GpxImportItemStatus.Uploaded, "已匯入", upload.TrackId),
+                            candidate.FileName,
+                            GpxImportItemStatus.Uploaded,
+                            string.IsNullOrWhiteSpace(upload.Warning)
+                                ? "已匯入"
+                                : "已匯入；" + upload.Warning,
+                            upload.TrackId),
                         UploadStatus.Duplicate => new GpxImportItemResult(
                             candidate.FileName, GpxImportItemStatus.Duplicate, "已跳過：重複", upload.TrackId),
                         _ => new GpxImportItemResult(

@@ -14,9 +14,14 @@ public enum UploadStatus
     Failed,
 }
 
-public sealed record UploadResult(UploadStatus Status, string? TrackId = null, string? ErrorMessage = null)
+public sealed record UploadResult(
+    UploadStatus Status,
+    string? TrackId = null,
+    string? ErrorMessage = null,
+    string? Warning = null)
 {
-    public static UploadResult Uploaded(string trackId) => new(UploadStatus.Uploaded, trackId);
+    public static UploadResult Uploaded(string trackId, string? warning = null) =>
+        new(UploadStatus.Uploaded, trackId, Warning: warning);
 
     public static UploadResult Duplicate(string trackId) => new(UploadStatus.Duplicate, trackId);
 
@@ -165,30 +170,46 @@ public sealed class GitHubRecordUploader : IRecordUploader
 
             if (!string.IsNullOrWhiteSpace(build.Summary?.Name))
             {
-                await UpdateJsonAsync(
-                    CombineDataPath("meta.json"),
-                    () => new JsonObject { ["tracks"] = new JsonObject() },
-                    node =>
-                    {
-                        if (node["tracks"] is not JsonObject tracks)
+                try
+                {
+                    await UpdateJsonAsync(
+                        CombineDataPath("meta.json"),
+                        () => new JsonObject { ["tracks"] = new JsonObject() },
+                        node =>
                         {
-                            tracks = new JsonObject();
-                            node["tracks"] = tracks;
-                        }
+                            if (node["tracks"] is not JsonObject tracks)
+                            {
+                                tracks = new JsonObject();
+                                node["tracks"] = tracks;
+                            }
 
-                        if (tracks[build.Entry.TrackId] is not JsonObject item)
-                        {
-                            item = new JsonObject();
-                            tracks[build.Entry.TrackId] = item;
-                        }
+                            if (tracks[build.Entry.TrackId] is not JsonObject item)
+                            {
+                                item = new JsonObject();
+                                tracks[build.Entry.TrackId] = item;
+                            }
 
-                        item["title"] = build.Summary.Name;
-                        return node;
-                    },
-                    $"GPS Tracker: title for imported {build.Entry.TrackId}",
-                    pretty: true,
-                    token,
-                    cancellationToken).ConfigureAwait(false);
+                            item["title"] = build.Summary.Name;
+                            return node;
+                        },
+                        $"GPS Tracker: title for imported {build.Entry.TrackId}",
+                        pretty: true,
+                        token,
+                        cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex) when (ex is GitHubApiException or HttpRequestException or IOException or
+                                           JsonException or InvalidDataException or InvalidOperationException)
+                {
+                    // 紀錄與 manifest 都已寫入，只有標題沒更新；不要讓整筆變成失敗，
+                    // 否則使用者重試時只會看到「重複」而誤判第一次沒上傳。
+                    return UploadResult.Uploaded(
+                        build.Entry.TrackId,
+                        "標題（meta.json）未更新：" + ex.Message);
+                }
             }
 
             return UploadResult.Uploaded(build.Entry.TrackId);

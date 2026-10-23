@@ -208,6 +208,25 @@ public class GitHubRecordUploaderTests : IDisposable
     }
 
     [Fact]
+    public async Task MetaFailureStillReportsUploadedWithWarning()
+    {
+        var handler = new FakeGitHubHandler();
+        handler.AddFile(ManifestPath, """{"tracks":[]}""");
+        handler.FailPutPath = MetaPath;
+        handler.FailPutStatus = HttpStatusCode.InternalServerError;
+        handler.FailPutCount = 10;
+        var uploader = CreateUploader(handler);
+
+        var result = await uploader.UploadAsync(BuildSample());
+
+        Assert.Equal(UploadStatus.Uploaded, result.Status);
+        Assert.False(string.IsNullOrWhiteSpace(result.Warning));
+        Assert.Contains("標題", result.Warning);
+        var manifest = JsonNode.Parse(handler.Files[ManifestPath].Content)!.AsObject();
+        Assert.Single(manifest["tracks"]!.AsArray());
+    }
+
+    [Fact]
     public async Task UnauthorizedTokenIsReportedAsInvalidCredentials()
     {
         var handler = new FakeGitHubHandler { FailGetStatus = HttpStatusCode.Unauthorized };

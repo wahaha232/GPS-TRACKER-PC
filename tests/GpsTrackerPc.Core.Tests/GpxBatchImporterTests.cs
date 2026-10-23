@@ -66,6 +66,21 @@ public class GpxBatchImporterTests
     }
 
     [Fact]
+    public async Task UploadWarningIsShownOnTheItem()
+    {
+        var batch = new GpxImportBatch(new FakeUploader(
+            build => UploadResult.Uploaded(build.Entry!.TrackId, "標題（meta.json）未更新")));
+
+        var results = await batch.ImportAsync(new[]
+        {
+            new GpxImportCandidate("a.gpx", Build("a")),
+        });
+
+        Assert.Equal(GpxImportItemStatus.Uploaded, results[0].Status);
+        Assert.Contains("標題", results[0].Message);
+    }
+
+    [Fact]
     public async Task CancellationStopsFurtherUploads()
     {
         using var cancellation = new CancellationTokenSource();
