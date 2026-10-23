@@ -59,4 +59,5 @@
 - 2026-10-23｜Kilo｜修 P1-3（v0.5.7）：`ImportWindow` 新增「取消匯入」按鈕，接上原本建立卻沒使用的 `_cts.Cancel()`；關閉視窗時若正在匯入也會自動送出取消並提示。取消後已完成項目保留、未開始項目維持可匯入；核心 `GpxImportBatch` 既有 token 檢查會停止後續上傳。新增測試 `CancellationStopsFurtherUploads`（取消後只上傳第一筆）｜Core 171、Simulation 57（合計 228）全數通過，JS 3/3，建置 0 警告 0 錯誤｜下一步：P2-1 meta.json 失敗語意（待確認）
 - 2026-10-23｜Kilo｜修 P2-1（v0.5.8）：`UploadResult` 新增 `Warning`，`GitHubRecordUploader` 在標題（meta.json）更新失敗時改回報 `Uploaded` + 警告（紀錄與 manifest 已成功），避免使用者重試時只看到「重複」；`GpxImportBatch` 與 `SimulatedUploadWindow` 會顯示警告。新增 2 個測試（meta 失敗仍為已上傳、匯入項目顯示警告）｜Core 173、Simulation 57（合計 230）全數通過，JS 3/3，建置 0 警告 0 錯誤｜下一步：P2-2 模擬上傳移動方式（待確認）
 - 2026-10-23｜Kilo｜修 P2-2（v0.5.9）：`SimulatedUploadWindow` 新增「移動方式」下拉（沿用 `ModeCatalog.Options`），並依 `SimulatedRecordBuilder` 預覽的平均速度自動預選；`Build` 現在會傳入 mode，摘要也顯示目前選擇。新增測試 `ProvidedModeIsWrittenToEntryAndTrack`｜Core 174、Simulation 57（合計 231）全數通過，JS 3/3，建置 0 警告 0 錯誤｜下一步：P2-5 系統匣圖示釋放（待確認）
+- 2026-10-23｜Kilo｜修 P2-5（v0.5.10）：`TrayIconService` 保存 `LoadIcon` 取得的 `Icon` 與是否自有，`Dispose` 時釋放自有的 HICON；`SystemIcons.Application` 是共用圖示，不釋放。此項無法在無視窗環境自動測試，僅建置與既有測試通過｜Core 174、Simulation 57（合計 231）全數通過，JS 3/3，建置 0 警告 0 錯誤｜下一步：三輪審查的 P0/P1/P2 已處理完，建議整理並發佈
 

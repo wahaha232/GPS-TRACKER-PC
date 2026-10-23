@@ -9,9 +9,12 @@ namespace GpsTrackerPc.App.Infrastructure;
 internal sealed class TrayIconService : IDisposable
 {
     private readonly NotifyIcon _notifyIcon;
+    private readonly Icon _icon;
+    private readonly bool _ownsIcon;
 
     public TrayIconService(Action showMainWindow, Action showSimulatorWindow, Action exit)
     {
+        (_icon, _ownsIcon) = LoadIcon();
         var menu = new ContextMenuStrip();
         var mainItem = new ToolStripMenuItem("顯示主視窗");
         mainItem.Click += (_, _) => showMainWindow();
@@ -26,7 +29,7 @@ internal sealed class TrayIconService : IDisposable
 
         _notifyIcon = new NotifyIcon
         {
-            Icon = LoadIcon(),
+            Icon = _icon,
             Text = "GPS Tracker PC",
             ContextMenuStrip = menu,
             Visible = false,
@@ -54,7 +57,7 @@ internal sealed class TrayIconService : IDisposable
         }
     }
 
-    private static Icon LoadIcon()
+    private static (Icon Icon, bool OwnsIcon) LoadIcon()
     {
         try
         {
@@ -64,7 +67,7 @@ internal sealed class TrayIconService : IDisposable
                 var icon = Icon.ExtractAssociatedIcon(executable);
                 if (icon != null)
                 {
-                    return icon;
+                    return (icon, true);
                 }
             }
         }
@@ -73,7 +76,7 @@ internal sealed class TrayIconService : IDisposable
             // 取不到執行檔圖示時用系統預設圖示。
         }
 
-        return SystemIcons.Application;
+        return (SystemIcons.Application, false);
     }
 
     public void Dispose()
@@ -87,6 +90,12 @@ internal sealed class TrayIconService : IDisposable
         catch (Exception)
         {
             // 結束時圖示可能已經被系統移除。
+        }
+
+        if (_ownsIcon)
+        {
+            // NotifyIcon 不會釋放呼叫端提供的 Icon；ExtractAssociatedIcon 取得的 HICON 要在這裡放掉。
+            _icon.Dispose();
         }
     }
 }

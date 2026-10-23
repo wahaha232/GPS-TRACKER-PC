@@ -9,7 +9,7 @@
     <RootNamespace>GpsTrackerPc.App</RootNamespace>
     <AssemblyName>GpsTrackerPc</AssemblyName>
     <ApplicationIcon>Assets\GpsTrackerPc.ico</ApplicationIcon>
-    <Version>0.5.9</Version>
+    <Version>0.5.10</Version>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
