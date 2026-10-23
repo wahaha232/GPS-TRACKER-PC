@@ -40,6 +40,22 @@ public class RouteEditorModelTests
     }
 
     [Fact]
+    public void ClearWaypointsRemovesEveryPointButKeepsOutages()
+    {
+        var model = new RouteEditorModel();
+        model.AddWaypoint(Taipei, timeOffsetSeconds: 0);
+        model.AddWaypoint(NearTaipei, timeOffsetSeconds: 10);
+        model.SetUseGpxTiming(true);
+        model.AddOutage(30, 10);
+
+        model.ClearWaypoints();
+
+        Assert.Empty(model.Waypoints);
+        Assert.False(model.UseGpxTiming);
+        Assert.Single(model.Outages);
+    }
+
+    [Fact]
     public void SpeedMustStayWithinTheSimulationLimits()
     {
         var model = new RouteEditorModel();

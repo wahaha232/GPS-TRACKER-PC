@@ -33,6 +33,7 @@
   }
 
   // MapLibre setStyle 會清掉自訂 source/layer；style.load 後呼叫這個函式加回去。
+  // 路線只保留編輯用的點位；軌跡要等播放開始、大頭針移動時才由 playback 圖層畫出來。
   function ensureCustomLayers(map) {
     if (!map.getSource("route")) {
       map.addSource("route", { type: "geojson", data: emptyFeatureCollection() });
@@ -43,7 +44,11 @@
         id: "route-casing",
         type: "line",
         source: "route",
-        layout: { "line-cap": "round", "line-join": "round" },
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+          visibility: "none"
+        },
         paint: { "line-color": "#0b1220", "line-width": 8, "line-opacity": 0.8 }
       });
     }
@@ -53,7 +58,11 @@
         id: "route-line",
         type: "line",
         source: "route",
-        layout: { "line-cap": "round", "line-join": "round" },
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+          visibility: "none"
+        },
         paint: { "line-color": "#38bdf8", "line-width": 4 }
       });
     }

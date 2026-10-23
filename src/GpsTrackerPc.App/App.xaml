@@ -26,11 +26,51 @@
     <Style TargetType="Label">
       <Setter Property="Foreground" Value="{DynamicResource AppText}" />
     </Style>
-    <Style TargetType="Button">
+    <Style x:Key="AppButton" TargetType="Button">
       <Setter Property="Background" Value="{DynamicResource AppBorder}" />
       <Setter Property="Foreground" Value="{DynamicResource AppText}" />
       <Setter Property="BorderBrush" Value="{DynamicResource AppBorderStrong}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="12,4" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="ButtonBorder"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="4"
+                    Padding="{TemplateBinding Padding}"
+                    SnapsToDevicePixels="True">
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                RecognizesAccessKey="True" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource AppBorderStrong}" />
+                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource AppAccent}" />
+                <Setter Property="Foreground" Value="{DynamicResource AppText}" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource AppAccent}" />
+                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource AppAccent}" />
+                <Setter Property="Foreground" Value="{DynamicResource AppBackground}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource AppSurfaceAlt}" />
+                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource AppBorder}" />
+                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.7" />
+                <Setter Property="Foreground" Value="{DynamicResource AppTextMuted}" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
+    <Style TargetType="Button" BasedOn="{StaticResource AppButton}" />
     <Style TargetType="TextBox">
       <Setter Property="Background" Value="{DynamicResource AppSurfaceAlt}" />
       <Setter Property="Foreground" Value="{DynamicResource AppText}" />
@@ -149,11 +189,51 @@
     <Style TargetType="CheckBox">
       <Setter Property="Foreground" Value="{DynamicResource AppText}" />
     </Style>
-    <Style TargetType="ToggleButton">
+    <Style x:Key="AppToggleButton" TargetType="ToggleButton">
       <Setter Property="Background" Value="{DynamicResource AppBorder}" />
       <Setter Property="Foreground" Value="{DynamicResource AppText}" />
       <Setter Property="BorderBrush" Value="{DynamicResource AppBorderStrong}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="12,4" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ToggleButton">
+            <Border x:Name="ToggleBorder"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="4"
+                    Padding="{TemplateBinding Padding}"
+                    SnapsToDevicePixels="True">
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                RecognizesAccessKey="True" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="ToggleBorder" Property="Background" Value="{DynamicResource AppBorderStrong}" />
+                <Setter TargetName="ToggleBorder" Property="BorderBrush" Value="{DynamicResource AppAccent}" />
+                <Setter Property="Foreground" Value="{DynamicResource AppText}" />
+              </Trigger>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="ToggleBorder" Property="Background" Value="{DynamicResource AppAccent}" />
+                <Setter TargetName="ToggleBorder" Property="BorderBrush" Value="{DynamicResource AppAccent}" />
+                <Setter Property="Foreground" Value="{DynamicResource AppBackground}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="ToggleBorder" Property="Background" Value="{DynamicResource AppSurfaceAlt}" />
+                <Setter TargetName="ToggleBorder" Property="BorderBrush" Value="{DynamicResource AppBorder}" />
+                <Setter TargetName="ToggleBorder" Property="Opacity" Value="0.7" />
+                <Setter Property="Foreground" Value="{DynamicResource AppTextMuted}" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
+    <Style TargetType="ToggleButton" BasedOn="{StaticResource AppToggleButton}" />
     <Style TargetType="Separator">
       <Setter Property="Background" Value="{DynamicResource AppBorder}" />
     </Style>

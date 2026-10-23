@@ -6,6 +6,7 @@ using GpsTrackerPc.App.Infrastructure;
 using GpsTrackerPc.Core.Data;
 using GpsTrackerPc.Core.Gpx;
 using GpsTrackerPc.Core.Security;
+using GpsTrackerPc.Core.Settings;
 using GpsTrackerPc.Core.Simulator;
 using GpsTrackerPc.Core.Updates;
 using Microsoft.Web.WebView2.Core;
@@ -59,6 +60,8 @@ public partial class MainWindow : Window
     private readonly HttpClient _updateClient;
     private readonly UpdateService _updateService;
     private readonly UpdateCheckStore _updateCheckStore;
+    private readonly TraySettingsStore _traySettingsStore;
+    private readonly TrayIconService _trayIcon;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _syncStateLock = new();
 
@@ -67,7 +70,13 @@ public partial class MainWindow : Window
     private bool _navigationStarted;
     private bool _pendingReload;
     private bool _syncRunning;
-    private SimulatorWindow? _simulatorWindow;
+    private bool _closing;
+    private bool _minimizeToTray;
+    private bool _trayHintShown;
+    private SimulatorView? _simulatorView;
+
+    /// <summary>主視窗正在關閉（給子視窗判斷是否跟著結束，避免關閉途中跳提醒）。</summary>
+    public bool IsClosing => _closing;
 
     public MainWindow()
     {
@@ -84,7 +93,30 @@ public partial class MainWindow : Window
         _updateClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
         _updateService = new UpdateService(_updateClient);
         _updateCheckStore = new UpdateCheckStore(AppPaths.UpdateCheckFile);
+        _traySettingsStore = new TraySettingsStore(AppPaths.TraySettingsFile);
+        _minimizeToTray = _traySettingsStore.Load().MinimizeToTray;
+        _trayIcon = new TrayIconService(
+            ShowFromTray,
+            () =>
+            {
+                ShowFromTray();
+                ShowSimulatorView();
+            },
+            Close);
+        _trayIcon.Visible = _minimizeToTray;
         Title = $"GPS Tracker PC v{AppVersion.Current}";
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+
+        // 模擬路線編輯改成內嵌在這個視窗，小螢幕時整個視窗也不能超出可用區域。
+        var workArea = SystemParameters.WorkArea;
+        MinWidth = Math.Min(MinWidth, Math.Max(640, workArea.Width - 32));
+        MinHeight = Math.Min(MinHeight, Math.Max(480, workArea.Height - 32));
+        Width = Math.Min(Width, Math.Max(MinWidth, workArea.Width - 32));
+        Height = Math.Min(Height, Math.Max(MinHeight, workArea.Height - 32));
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -114,6 +146,11 @@ public partial class MainWindow : Window
             Browser.DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x0B, 0x12, 0x20);
 
             await Browser.EnsureCoreWebView2Async();
+            if (_closing)
+            {
+                return;
+            }
+
             var core = Browser.CoreWebView2;
 
             core.Settings.IsStatusBarEnabled = false;
@@ -136,6 +173,10 @@ public partial class MainWindow : Window
                 CoreWebView2HostResourceAccessKind.Allow);
 
             await core.AddScriptToExecuteOnDocumentCreatedAsync(DesktopBootstrapScript);
+            if (_closing)
+            {
+                return;
+            }
 
             core.NavigationCompleted += Core_NavigationCompleted;
             core.NewWindowRequested += Core_NewWindowRequested;
@@ -149,6 +190,11 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            if (_closing)
+            {
+                return;
+            }
+
             if (ex is WebView2RuntimeNotFoundException or DllNotFoundException)
             {
                 ShowWebView2Missing();
@@ -203,6 +249,11 @@ public partial class MainWindow : Window
 
     private async Task RunSyncAsync(bool automatic)
     {
+        if (_closing)
+        {
+            return;
+        }
+
         lock (_syncStateLock)
         {
             if (_syncRunning)
@@ -221,6 +272,11 @@ public partial class MainWindow : Window
         try
         {
             var result = await _syncService.SyncAsync(_lifetime.Token);
+            if (_closing)
+            {
+                return;
+            }
+
             UpdateSyncStatus(result);
 
             if (result.HasChanges && _navigationStarted)
@@ -242,7 +298,10 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            SyncStatusText.Text = "同步失敗：" + ex.Message;
+            if (!_closing)
+            {
+                SyncStatusText.Text = "同步失敗：" + ex.Message;
+            }
         }
         finally
         {
@@ -251,13 +310,21 @@ public partial class MainWindow : Window
                 _syncRunning = false;
             }
 
-            SyncButton.IsEnabled = true;
-            SyncButton.Content = "立即同步";
+            if (!_closing)
+            {
+                SyncButton.IsEnabled = true;
+                SyncButton.Content = "立即同步";
+            }
         }
     }
 
     private void UpdateSyncStatus(SyncResult result)
     {
+        if (_closing)
+        {
+            return;
+        }
+
         var time = result.CompletedAt.ToLocalTime().ToString("yyyy/MM/dd HH:mm");
         if (result.Success)
         {
@@ -279,6 +346,11 @@ public partial class MainWindow : Window
 
     private void Core_NavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
+        if (_closing)
+        {
+            return;
+        }
+
         if (e.IsSuccess)
         {
             _pageLoaded = true;
@@ -297,6 +369,12 @@ public partial class MainWindow : Window
 
     private void Core_NewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
     {
+        if (_closing)
+        {
+            e.Handled = true;
+            return;
+        }
+
         // 外部連結（例如地圖 attribution）交給預設瀏覽器，不在 App 內另開視窗。
         e.Handled = true;
         if (Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri) &&
@@ -308,6 +386,11 @@ public partial class MainWindow : Window
 
     private void Core_ProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
     {
+        if (_closing)
+        {
+            return;
+        }
+
         if (e.ProcessFailedKind == CoreWebView2ProcessFailedKind.BrowserProcessExited)
         {
             ShowError("WebView2 瀏覽器程序已結束。請重新啟動 App。");
@@ -316,6 +399,11 @@ public partial class MainWindow : Window
 
     private void ShowError(string message)
     {
+        if (_closing)
+        {
+            return;
+        }
+
         LoadingPanel.Visibility = Visibility.Collapsed;
         ErrorText.Text = message;
         WebView2DownloadButton.Visibility = Visibility.Collapsed;
@@ -365,35 +453,54 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Simulator_Click(object sender, RoutedEventArgs e)
+    private void Simulator_Click(object sender, RoutedEventArgs e) => ShowSimulatorView();
+
+    /// <summary>在主視窗內容區顯示模擬路線編輯；第一次使用才建立，之後保留狀態。</summary>
+    private void ShowSimulatorView()
     {
-        if (_simulatorWindow is { IsVisible: true })
+        if (_simulatorView is null)
         {
-            _simulatorWindow.Activate();
-            return;
+            _simulatorView = new SimulatorView(_tokenStore, _deviceNameStore);
+            _simulatorView.BackToHomeRequested += (_, _) => ShowHomePage();
+            SimulatorHost.Children.Add(_simulatorView);
         }
 
-        if (_simulatorWindow != null)
-        {
-            _simulatorWindow.Show();
-            if (_simulatorWindow.WindowState == WindowState.Minimized)
-            {
-                _simulatorWindow.WindowState = WindowState.Normal;
-            }
-
-            _simulatorWindow.Activate();
-            return;
-        }
-
-        _simulatorWindow = new SimulatorWindow(_tokenStore, _deviceNameStore)
-        {
-            Owner = this,
-        };
-        _simulatorWindow.Closed += (_, _) => _simulatorWindow = null;
-        _simulatorWindow.Show();
+        ErrorPanel.Visibility = Visibility.Collapsed;
+        LoadingPanel.Visibility = Visibility.Collapsed;
+        Browser.Visibility = Visibility.Collapsed;
+        SimulatorHost.Visibility = Visibility.Visible;
+        _simulatorView.Focus();
     }
 
-    /// <summary>回首頁：回到主視窗並重新載入紀錄網站的首頁。</summary>
+    /// <summary>從工具列圖示區回到主視窗。</summary>
+    private void ShowFromTray()
+    {
+        Show();
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Activate();
+    }
+
+    private void Window_StateChanged(object? sender, EventArgs e)
+    {
+        if (_closing || !_minimizeToTray || WindowState != WindowState.Minimized)
+        {
+            return;
+        }
+
+        // 縮小到系統匣：視窗隱藏但程式、同步與模擬照常運作。
+        Hide();
+        if (!_trayHintShown)
+        {
+            _trayHintShown = true;
+            _trayIcon.ShowBalloon("程式已縮到工具列圖示區，模擬會繼續在背景執行。");
+        }
+    }
+
+    /// <summary>切回紀錄網站首頁，模擬路線編輯保留在背景。</summary>
     public void ShowHomePage()
     {
         if (WindowState == WindowState.Minimized)
@@ -403,6 +510,8 @@ public partial class MainWindow : Window
 
         Show();
         Activate();
+        SimulatorHost.Visibility = Visibility.Collapsed;
+        Browser.Visibility = Visibility.Visible;
         if (Browser.CoreWebView2 != null)
         {
             Browser.CoreWebView2.Navigate(StartPage);
@@ -430,6 +539,10 @@ public partial class MainWindow : Window
             Owner = this,
         };
         window.ShowDialog();
+
+        // 設定畫面可能改了「縮小到系統匣」，回來後重新套用。
+        _minimizeToTray = _traySettingsStore.Load().MinimizeToTray;
+        _trayIcon.Visible = _minimizeToTray;
     }
 
     private void CheckCloudUpdates_Click(object sender, RoutedEventArgs e) =>
@@ -492,6 +605,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_closing)
+        {
+            return;
+        }
+
         var answer = MessageBox.Show(
             this,
             $"有新版本 v{update.Version}（目前 v{AppVersion.Current}）。\n\n要開啟更新畫面嗎？",
@@ -508,9 +626,73 @@ public partial class MainWindow : Window
 
     private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        _lifetime.Cancel();
-        _httpClient.Dispose();
-        _updateClient.Dispose();
-        Browser.Dispose();
+        if (_closing)
+        {
+            return;
+        }
+
+        if (_simulatorView is { HasUnsavedChanges: true })
+        {
+            var answer = MessageBox.Show(
+                this,
+                "模擬路線尚未儲存，結束程式後變更會消失。\n\n確定要結束嗎？",
+                "尚未儲存",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (answer != MessageBoxResult.Yes)
+            {
+                e.Cancel = true;
+                return;
+            }
+        }
+
+        _closing = true;
+        _simulatorView?.Shutdown();
+
+        // 先取消背景工作，並解除 WebView2 事件，避免同步／導覽回來時再碰已關閉的視窗。
+        try
+        {
+            _lifetime.Cancel();
+        }
+        catch (Exception)
+        {
+            // 取消失敗不影響關閉。
+        }
+
+        try
+        {
+            if (Browser.CoreWebView2 is { } core)
+            {
+                core.NavigationCompleted -= Core_NavigationCompleted;
+                core.NewWindowRequested -= Core_NewWindowRequested;
+                core.ProcessFailed -= Core_ProcessFailed;
+            }
+        }
+        catch (Exception)
+        {
+            // WebView2 可能還沒初始化完成。
+        }
+
+        try
+        {
+            _httpClient.Dispose();
+        }
+        catch (Exception)
+        {
+            // 網路資源可能已被背景工作釋放。
+        }
+
+        try
+        {
+            _updateClient.Dispose();
+        }
+        catch (Exception)
+        {
+        }
+
+        _trayIcon.Dispose();
+
+        // 不在 Closing 呼叫 Browser.Dispose()：WebView2 初始化中或關閉訊息迴圈時，
+        // 同步釋放可能卡住 UI 執行緒，讓程式看起來「無回應」；程式結束時會一併釋放。
     }
 }

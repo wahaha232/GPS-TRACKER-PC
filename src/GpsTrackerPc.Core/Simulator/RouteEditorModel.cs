@@ -111,6 +111,13 @@ public sealed class RouteEditorModel
         return true;
     }
 
+    /// <summary>清除全部路線點；GPS 中斷設定與其他路線設定保留。</summary>
+    public void ClearWaypoints()
+    {
+        _waypoints.Clear();
+        UseGpxTiming = false;
+    }
+
     /// <summary>把指定點移到新位置；超出範圍會被夾在 0～最後一個索引。</summary>
     public bool ReorderWaypoint(string id, int newIndex)
     {

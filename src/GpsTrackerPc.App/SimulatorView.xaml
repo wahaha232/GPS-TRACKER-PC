@@ -1,29 +1,14 @@
-<Window x:Class="GpsTrackerPc.App.SimulatorWindow"
+<UserControl x:Class="GpsTrackerPc.App.SimulatorView"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
-        Title="模擬路線編輯"
-        Icon="Assets/GpsTrackerPc.ico"
-        Width="1450"
-        Height="900"
-        MinWidth="1100"
-        MinHeight="720"
-        WindowStartupLocation="CenterOwner"
-        Background="{DynamicResource AppBackground}"
-        Loaded="Window_Loaded"
-        Closing="Window_Closing"
-        StateChanged="Window_StateChanged"
-        IsVisibleChanged="Window_IsVisibleChanged"
-        Activated="Window_Activated"
-        Deactivated="Window_Deactivated">
-  <Window.Resources>
+        Loaded="View_Loaded"
+        Background="{DynamicResource AppBackground}">
+<UserControl.Resources>
     <Style TargetType="TextBlock">
       <Setter Property="Foreground" Value="{DynamicResource AppText}" />
     </Style>
-    <Style TargetType="Button">
-      <Setter Property="Background" Value="{DynamicResource AppBorder}" />
-      <Setter Property="Foreground" Value="{DynamicResource AppText}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource AppBorderStrong}" />
+    <Style TargetType="Button" BasedOn="{StaticResource AppButton}">
       <Setter Property="Padding" Value="10,4" />
     </Style>
     <Style TargetType="TextBox">
@@ -50,7 +35,7 @@
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Margin" Value="0,10,0,6" />
     </Style>
-  </Window.Resources>
+  </UserControl.Resources>
 
   <Grid>
     <Grid.ColumnDefinitions>
@@ -108,9 +93,11 @@
             Background="{DynamicResource AppBackground}"
             BorderBrush="{DynamicResource AppBorder}"
             BorderThickness="1,0,0,0">
-      <ScrollViewer VerticalScrollBarVisibility="Auto"
+      <ScrollViewer x:Name="SideScrollViewer"
+                    VerticalScrollBarVisibility="Auto"
                     HorizontalScrollBarVisibility="Disabled"
-                    Padding="16,14">
+                    Padding="16,14"
+                    PreviewMouseWheel="SideScrollViewer_PreviewMouseWheel">
         <StackPanel>
           <Button Content="← 回首頁"
                   HorizontalAlignment="Left"
@@ -192,7 +179,8 @@
           <WrapPanel Margin="0,6,0,0">
             <Button Content="上移" Margin="0,0,6,0" Click="MoveUp_Click" />
             <Button Content="下移" Margin="0,0,6,0" Click="MoveDown_Click" />
-            <Button Content="刪除選取點" Click="DeleteWaypoint_Click" />
+            <Button Content="刪除選取點" Margin="0,0,6,0" Click="DeleteWaypoint_Click" />
+            <Button Content="全部清除" Click="ClearWaypoints_Click" />
           </WrapPanel>
           <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
             <TextBlock Text="停留秒數" VerticalAlignment="Center" Margin="0,0,6,0" />
@@ -325,4 +313,4 @@
       </ScrollViewer>
     </Border>
   </Grid>
-</Window>
+</UserControl>

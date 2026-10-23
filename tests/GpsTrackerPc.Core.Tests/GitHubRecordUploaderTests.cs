@@ -168,6 +168,19 @@ public class GitHubRecordUploaderTests : IDisposable
     }
 
     [Fact]
+    public async Task UnauthorizedTokenIsReportedAsInvalidCredentials()
+    {
+        var handler = new FakeGitHubHandler { FailGetStatus = HttpStatusCode.Unauthorized };
+        var uploader = CreateUploader(handler);
+
+        var result = await uploader.UploadAsync(BuildSample());
+
+        Assert.Equal(UploadStatus.Failed, result.Status);
+        Assert.Contains("Token", result.ErrorMessage);
+        Assert.Contains("權限", result.ErrorMessage);
+    }
+
+    [Fact]
     public async Task MissingTokenDoesNotCallGitHub()
     {
         var handler = new FakeGitHubHandler();
@@ -249,6 +262,8 @@ public class GitHubRecordUploaderTests : IDisposable
 
         public HttpStatusCode FailPutStatus { get; set; } = HttpStatusCode.Conflict;
 
+        public HttpStatusCode? FailGetStatus { get; set; }
+
         public void AddFile(string path, string content)
         {
             Files[path] = new FakeFile(content, Guid.NewGuid().ToString("N"));
@@ -270,6 +285,11 @@ public class GitHubRecordUploaderTests : IDisposable
 
             if (request.Method == HttpMethod.Get)
             {
+                if (FailGetStatus.HasValue)
+                {
+                    return new HttpResponseMessage(FailGetStatus.Value);
+                }
+
                 if (!Files.TryGetValue(path, out var file))
                 {
                     return new HttpResponseMessage(HttpStatusCode.NotFound);

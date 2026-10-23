@@ -43,6 +43,7 @@ public sealed class GitHubApiException : Exception
 /// 用 GitHub Contents API 上傳 GPX 匯入的紀錄：
 /// 先寫 data/&lt;trackId&gt;.json，再更新 manifest.json；GPX 有標題時再更新 meta.json。
 /// 遇到 409／422（同時有人寫入）會重新讀最新內容、合併後重試，最多 3 次。
+/// 預設寫入 [RecordUploadTarget] 指定的公開倉庫。
 /// </summary>
 public sealed class GitHubRecordUploader : IRecordUploader
 {
@@ -60,10 +61,10 @@ public sealed class GitHubRecordUploader : IRecordUploader
     public GitHubRecordUploader(
         HttpClient httpClient,
         TokenStore tokenStore,
-        string owner = "wahaha232",
-        string repo = "ANDROID-APP-DEV",
-        string branch = "main",
-        string dataPath = "gpstracker-web/data",
+        string owner = RecordUploadTarget.Owner,
+        string repo = RecordUploadTarget.Repo,
+        string branch = RecordUploadTarget.Branch,
+        string dataPath = RecordUploadTarget.DataPath,
         TimeSpan? retryDelay = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
@@ -179,6 +180,11 @@ public sealed class GitHubRecordUploader : IRecordUploader
         catch (OperationCanceledException)
         {
             throw;
+        }
+        catch (GitHubApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            return UploadResult.Failed(
+                "GitHub Token 無效或已過期，請到「設定」重新輸入（需要該倉庫的寫入權限）。");
         }
         catch (Exception ex) when (ex is GitHubApiException or HttpRequestException or IOException or
                                    JsonException or InvalidDataException or InvalidOperationException)

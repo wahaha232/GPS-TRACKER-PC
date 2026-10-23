@@ -6,6 +6,8 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using GpsTrackerPc.App.Infrastructure;
 using GpsTrackerPc.Core.Security;
@@ -18,10 +20,10 @@ using Microsoft.Win32;
 namespace GpsTrackerPc.App;
 
 /// <summary>
-/// 6A／6B 路線編輯與模擬播放視窗。地圖（simulator.html）只負責顯示與送出事件；
-/// 路線與播放結果的實際資料都由 C# 管理，地圖只畫出 C# 傳過去的內容。
+/// 路線編輯與模擬播放。內嵌在主視窗的內容區塊，不另開視窗；
+/// 地圖（simulator.html）只負責顯示與送出事件，路線與播放結果都由 C# 管理。
 /// </summary>
-public partial class SimulatorWindow : Window
+public partial class SimulatorView : UserControl
 {
     private const string SimulatorHost = "simulator.local";
 
@@ -57,8 +59,14 @@ public partial class SimulatorWindow : Window
     private Coordinates? _lastPlaybackCoordinate;
     private bool _hasUnsavedChanges;
     private bool _locating;
+    private bool _autoLocateAttempted;
+    private bool _closing;
+    private Window? _hostWindow;
 
-    public SimulatorWindow(TokenStore tokenStore, DeviceNameStore deviceNameStore)
+    /// <summary>使用者按下「回首頁」時通知主視窗切回紀錄網站。</summary>
+    public event EventHandler? BackToHomeRequested;
+
+    public SimulatorView(TokenStore tokenStore, DeviceNameStore deviceNameStore)
     {
         InitializeComponent();
 
@@ -78,6 +86,7 @@ public partial class SimulatorWindow : Window
             Interval = TimeSpan.FromMilliseconds(PlaybackMapPolicy.UpdateIntervalMilliseconds),
         };
         _playbackTimer.Tick += PlaybackTimer_Tick;
+        IsVisibleChanged += View_IsVisibleChanged;
 
         _updatingUi = true;
         RouteNameBox.Text = _route.Name;
@@ -94,8 +103,21 @@ public partial class SimulatorWindow : Window
     /// <summary>給第 7 階段使用的最近一次播放／直接產生結果。</summary>
     public PlaybackResult? LastPlaybackResult => _lastPlayback;
 
-    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    public bool HasUnsavedChanges => _hasUnsavedChanges;
+
+    private async void View_Loaded(object sender, RoutedEventArgs e)
     {
+        if (_hostWindow is null)
+        {
+            _hostWindow = Window.GetWindow(this);
+            if (_hostWindow != null)
+            {
+                _hostWindow.Activated += HostWindow_Activated;
+                _hostWindow.Deactivated += HostWindow_Deactivated;
+                _hostWindow.StateChanged += HostWindow_StateChanged;
+            }
+        }
+
         try
         {
             var simulatorRoot = Path.Combine(AppContext.BaseDirectory, "Simulator");
@@ -110,6 +132,11 @@ public partial class SimulatorWindow : Window
 
             MapView.DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x0B, 0x12, 0x20);
             await MapView.EnsureCoreWebView2Async();
+            if (_closing)
+            {
+                return;
+            }
+
             var core = MapView.CoreWebView2;
 
             core.Settings.IsStatusBarEnabled = false;
@@ -132,12 +159,20 @@ public partial class SimulatorWindow : Window
         }
         catch (Exception ex)
         {
-            ShowError("初始化模擬地圖失敗：\n\n" + ex.Message);
+            if (!_closing)
+            {
+                ShowError("初始化模擬地圖失敗：\n\n" + ex.Message);
+            }
         }
     }
 
     private void Core_NavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
+        if (_closing)
+        {
+            return;
+        }
+
         if (e.IsSuccess)
         {
             LoadingPanel.Visibility = Visibility.Collapsed;
@@ -149,6 +184,11 @@ public partial class SimulatorWindow : Window
 
     private void Core_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
+        if (_closing)
+        {
+            return;
+        }
+
         try
         {
             using var document = JsonDocument.Parse(e.WebMessageAsJson);
@@ -169,6 +209,13 @@ public partial class SimulatorWindow : Window
                     SendBasemap();
                     SetPlaybackControlState();
                     UpdateMapActivity();
+
+                    // 路線還是空的就自動定位一次，讓地圖一開啟就在使用者附近。
+                    if (_route.Waypoints.Count == 0)
+                    {
+                        _ = AutoLocateAsync();
+                    }
+
                     break;
                 case "center":
                     ReadCenter(root);
@@ -397,7 +444,7 @@ public partial class SimulatorWindow : Window
 
     private void Post(object message)
     {
-        if (!_webReady || MapView.CoreWebView2 == null)
+        if (_closing || !_webReady || MapView.CoreWebView2 == null)
         {
             return;
         }
@@ -626,6 +673,33 @@ public partial class SimulatorWindow : Window
         SetStatus($"已刪除路線點，剩 {_route.Waypoints.Count} 點。");
     }
 
+    private void ClearWaypoints_Click(object sender, RoutedEventArgs e)
+    {
+        var count = _route.Waypoints.Count;
+        if (count == 0)
+        {
+            SetStatus("目前沒有路線點。");
+            return;
+        }
+
+        var answer = ShowMessageBox(
+            $"確定要清除全部 {count} 個路線點嗎？\n\nGPS 中斷設定會保留。",
+            "清除全部路線點",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        _route.ClearWaypoints();
+        _selectedWaypointId = null;
+        _hasUnsavedChanges = true;
+        RefreshAllUi(updateName: false);
+        SendRoute();
+        SetStatus($"已清除全部路線點（原本 {count} 點）。");
+    }
+
     private void AddOutage_Click(object sender, RoutedEventArgs e)
     {
         if (!long.TryParse(
@@ -688,6 +762,11 @@ public partial class SimulatorWindow : Window
         try
         {
             var results = await _geocoder.SearchAsync(query, _lifetime.Token);
+            if (_closing)
+            {
+                return;
+            }
+
             _updatingUi = true;
             SearchResultsList.ItemsSource = results;
             _updatingUi = false;
@@ -699,12 +778,18 @@ public partial class SimulatorWindow : Window
         }
         catch (Exception ex)
         {
-            SetStatus("地點搜尋失敗：" + ex.Message);
+            if (!_closing)
+            {
+                SetStatus("地點搜尋失敗：" + ex.Message);
+            }
         }
         finally
         {
-            SearchButton.Content = previous;
-            SearchButton.IsEnabled = true;
+            if (!_closing)
+            {
+                SearchButton.Content = previous;
+                SearchButton.IsEnabled = true;
+            }
         }
     }
 
@@ -821,8 +906,7 @@ public partial class SimulatorWindow : Window
     {
         if (_route.Waypoints.Count > 0)
         {
-            var answer = MessageBox.Show(
-                this,
+            var answer = ShowMessageBox(
                 "要清空目前的路線並開一條新路線嗎？",
                 "新路線",
                 MessageBoxButton.YesNo,
@@ -861,7 +945,7 @@ public partial class SimulatorWindow : Window
     {
         var window = new SavedRoutesWindow(_library)
         {
-            Owner = this,
+            Owner = Window.GetWindow(this),
         };
         if (window.ShowDialog() == true && window.SelectedRoute != null)
         {
@@ -882,7 +966,7 @@ public partial class SimulatorWindow : Window
             Title = "匯入 GPX／KML",
             Filter = "GPX／KML (*.gpx;*.kml)|*.gpx;*.kml|所有檔案 (*.*)|*.*",
         };
-        if (dialog.ShowDialog(this) != true)
+        if (dialog.ShowDialog(Window.GetWindow(this)) != true)
         {
             return;
         }
@@ -897,6 +981,10 @@ public partial class SimulatorWindow : Window
                 using var stream = File.OpenRead(path);
                 return LocationDocumentCodec.ImportStream(stream, fallbackName);
             });
+            if (_closing)
+            {
+                return;
+            }
 
             _route.ReplaceRoute(imported.Route);
             _selectedWaypointId = _route.Waypoints.Count > 0 ? _route.Waypoints[0].Id : null;
@@ -910,7 +998,10 @@ public partial class SimulatorWindow : Window
         }
         catch (Exception ex)
         {
-            SetStatus("匯入失敗：" + ex.Message);
+            if (!_closing)
+            {
+                SetStatus("匯入失敗：" + ex.Message);
+            }
         }
     }
 
@@ -929,7 +1020,7 @@ public partial class SimulatorWindow : Window
                 : "KML (*.kml)|*.kml",
             FileName = SafeFileName(_route.Name) + "." + extension,
         };
-        if (dialog.ShowDialog(this) != true)
+        if (dialog.ShowDialog(Window.GetWindow(this)) != true)
         {
             return;
         }
@@ -1113,6 +1204,11 @@ public partial class SimulatorWindow : Window
         try
         {
             var result = await Task.Run(() => PlaybackController.GenerateDirect(route, laps));
+            if (_closing)
+            {
+                return;
+            }
+
             _playback = null;
             _lastPlayback = result;
             _lastPlaybackCoordinate = result.Samples.LastOrDefault()?.Coordinates
@@ -1153,12 +1249,18 @@ public partial class SimulatorWindow : Window
         }
         catch (Exception ex)
         {
-            SetStatus("直接產生失敗：" + ex.Message);
+            if (!_closing)
+            {
+                SetStatus("直接產生失敗：" + ex.Message);
+            }
         }
         finally
         {
             _directGenerating = false;
-            SetPlaybackControlState();
+            if (!_closing)
+            {
+                SetPlaybackControlState();
+            }
         }
     }
 
@@ -1172,8 +1274,7 @@ public partial class SimulatorWindow : Window
 
         if (!_tokenStore.HasToken)
         {
-            MessageBox.Show(
-                this,
+            ShowMessageBox(
                 "上傳需要 GitHub Token，請先回主畫面按「設定」輸入。",
                 "尚未設定 Token",
                 MessageBoxButton.OK,
@@ -1187,7 +1288,7 @@ public partial class SimulatorWindow : Window
             _uploadClient,
             _deviceNameStore.Load())
         {
-            Owner = this,
+            Owner = Window.GetWindow(this),
         };
         window.ShowDialog();
         if (window.Uploaded)
@@ -1198,7 +1299,7 @@ public partial class SimulatorWindow : Window
 
     private void PlaybackTimer_Tick(object? sender, EventArgs e)
     {
-        if (_playback?.State != PlaybackState.Playing)
+        if (_closing || _playback?.State != PlaybackState.Playing)
         {
             return;
         }
@@ -1452,27 +1553,34 @@ public partial class SimulatorWindow : Window
 
     private void SendBasemap() => Post(new { type = "setBasemap", basemap = _basemap.Value });
 
-    private void Window_StateChanged(object? sender, EventArgs e) => UpdateMapActivity();
+    private void HostWindow_StateChanged(object? sender, EventArgs e) => UpdateMapActivity();
 
-    private void Window_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => UpdateMapActivity();
+    private void HostWindow_Activated(object? sender, EventArgs e) => UpdateMapActivity();
 
-    private void Window_Activated(object? sender, EventArgs e) => UpdateMapActivity();
+    private void HostWindow_Deactivated(object? sender, EventArgs e) => UpdateMapActivity();
 
-    private void Window_Deactivated(object? sender, EventArgs e) => UpdateMapActivity();
+    private void View_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => UpdateMapActivity();
 
     /// <summary>
-    /// 視窗縮小、被其他視窗蓋住或失去焦點時先停止送地圖更新；模擬仍由計時器照常推進。
-    /// 恢復時用一次完整（已抽稀的）畫面補上。
+    /// 主視窗縮小、被其他視窗蓋住、失去焦點或切回紀錄網站時先停止送地圖更新；
+    /// 模擬仍由計時器照常推進，恢復時用一次完整（已抽稀的）畫面補上。
     /// </summary>
     private void UpdateMapActivity()
     {
+        // 關閉途中地圖元件可能已經釋放，不能再碰 CoreWebView2。
+        if (_closing)
+        {
+            return;
+        }
+
+        var host = _hostWindow ?? Window.GetWindow(this);
         var shouldUpdate = IsVisible &&
-                           WindowState != WindowState.Minimized &&
-                           IsActive;
+                           host?.WindowState != WindowState.Minimized &&
+                           host?.IsActive == true;
 
         if (MapView.CoreWebView2 != null)
         {
-            MapView.CoreWebView2.MemoryUsageTargetLevel = WindowState == WindowState.Minimized
+            MapView.CoreWebView2.MemoryUsageTargetLevel = host?.WindowState == WindowState.Minimized
                 ? CoreWebView2MemoryUsageTargetLevel.Low
                 : CoreWebView2MemoryUsageTargetLevel.Normal;
         }
@@ -1534,6 +1642,18 @@ public partial class SimulatorWindow : Window
 
     private void SetStatus(string message) => StatusText.Text = message;
 
+    private MessageBoxResult ShowMessageBox(
+        string message,
+        string title,
+        MessageBoxButton button,
+        MessageBoxImage image)
+    {
+        var owner = _hostWindow ?? Window.GetWindow(this);
+        return owner != null
+            ? MessageBox.Show(owner, message, title, button, image)
+            : MessageBox.Show(message, title, button, image);
+    }
+
     private void ShowError(string message)
     {
         LoadingPanel.Visibility = Visibility.Collapsed;
@@ -1579,17 +1699,43 @@ public partial class SimulatorWindow : Window
 
     private async void CurrentLocation_Click(object sender, RoutedEventArgs e)
     {
-        if (_locating)
+        await LocateFromWindowsAsync(center: true, quiet: false);
+    }
+
+    /// <summary>開啟視窗且路線還是空的時候自動定位一次，把地圖移到使用者附近。</summary>
+    private async Task AutoLocateAsync()
+    {
+        if (_autoLocateAttempted || _locating || _closing)
+        {
+            return;
+        }
+
+        _autoLocateAttempted = true;
+        await LocateFromWindowsAsync(center: _route.Waypoints.Count == 0, quiet: true);
+    }
+
+    private async Task LocateFromWindowsAsync(bool center, bool quiet)
+    {
+        if (_closing || _locating)
         {
             return;
         }
 
         _locating = true;
         CurrentLocationButton.IsEnabled = false;
-        SetStatus("正在透過 Windows 定位服務取得目前位置（會使用 Wi-Fi／基地台）…");
+        if (!quiet)
+        {
+            SetStatus("正在透過 Windows 定位服務取得目前位置（會使用 Wi-Fi／基地台）…");
+        }
+
         try
         {
             var result = await CurrentLocationProvider.GetAsync();
+            if (_closing)
+            {
+                return;
+            }
+
             if (!result.Success || result.Coordinates == null)
             {
                 SetStatus(result.ErrorMessage ?? "無法取得目前位置。");
@@ -1602,15 +1748,19 @@ public partial class SimulatorWindow : Window
                 type = "showCurrentLocation",
                 lat = coordinate.Latitude,
                 lon = coordinate.Longitude,
-                center = true,
+                center,
             });
             SetStatus(
-                $"目前位置：{coordinate.FormattedLatitude()}, {coordinate.FormattedLongitude()}（Windows 定位）");
+                $"目前位置：{coordinate.FormattedLatitude()}, {coordinate.FormattedLongitude()}" +
+                (center ? "（已移到地圖中心）" : "（Windows 定位）"));
         }
         finally
         {
             _locating = false;
-            CurrentLocationButton.IsEnabled = true;
+            if (!_closing)
+            {
+                CurrentLocationButton.IsEnabled = true;
+            }
         }
     }
 
@@ -1634,50 +1784,127 @@ public partial class SimulatorWindow : Window
 
     private void BackToHome_Click(object sender, RoutedEventArgs e)
     {
-        // 回首頁只隱藏模擬視窗，不關閉程式；再次按「模擬」會回到同一個編輯狀態。
-        Hide();
-        if (Owner is MainWindow main)
-        {
-            main.ShowHomePage();
-        }
-        else if (Owner is Window owner)
-        {
-            owner.Show();
-            owner.Activate();
-        }
+        // 回首頁只切換主視窗內容，模擬狀態保留；再次按「模擬」會回到同一個編輯狀態。
+        BackToHomeRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    /// <summary>
+    /// 側欄滾輪：游標在清單上時先讓清單自己滾，清單到頂／底後改滾整個側欄，
+    /// 避免內層清單吃掉滾輪事件，導致側欄滾不到最底端。
+    /// </summary>
+    private void SideScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
-        if (_hasUnsavedChanges)
+        if (SideScrollViewer.ScrollableHeight <= 0)
         {
-            var answer = MessageBox.Show(
-                this,
-                "目前路線尚未儲存，關閉後變更會消失。\n\n確定要關閉嗎？",
-                "尚未儲存",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-            if (answer != MessageBoxResult.Yes)
+            return;
+        }
+
+        var inner = FindInnerScrollViewer(e.OriginalSource as DependencyObject);
+        if (inner is not null && !ReferenceEquals(inner, SideScrollViewer) && inner.ScrollableHeight > 0)
+        {
+            var atTop = inner.VerticalOffset <= 0;
+            var atBottom = inner.VerticalOffset >= inner.ScrollableHeight - 0.5;
+            if (!(e.Delta > 0 && atTop) && !(e.Delta < 0 && atBottom))
             {
-                e.Cancel = true;
                 return;
             }
         }
 
-        // 關閉流程不要讓任何清理動作的例外變成交互崩潰；模擬視窗關閉後主視窗仍會保留。
+        SideScrollViewer.ScrollToVerticalOffset(
+            Math.Clamp(SideScrollViewer.VerticalOffset - e.Delta, 0, SideScrollViewer.ScrollableHeight));
+        e.Handled = true;
+    }
+
+    private ScrollViewer? FindInnerScrollViewer(DependencyObject? source)
+    {
+        var current = source;
+        while (current is not null && !ReferenceEquals(current, SideScrollViewer))
+        {
+            if (current is ScrollViewer viewer)
+            {
+                return viewer;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
+    /// <summary>主程式關閉時停止播放與背景工作；地圖由行程結束時釋放。</summary>
+    public void Shutdown()
+    {
+        if (_closing)
+        {
+            return;
+        }
+
+        _closing = true;
+
+        try
+        {
+            IsVisibleChanged -= View_IsVisibleChanged;
+            if (_hostWindow is { } host)
+            {
+                host.Activated -= HostWindow_Activated;
+                host.Deactivated -= HostWindow_Deactivated;
+                host.StateChanged -= HostWindow_StateChanged;
+                _hostWindow = null;
+            }
+        }
+        catch (Exception)
+        {
+            // 解除事件失敗不影響關閉。
+        }
+
         try
         {
             _playbackTimer.Stop();
             _playbackWatch.Reset();
             _playback?.Stop();
-            _lifetime.Cancel();
-            _searchClient.Dispose();
-            _uploadClient.Dispose();
-            MapView.Dispose();
         }
         catch (Exception)
         {
-            // WebView2 或網路資源在關閉途中可能已經被釋放，忽略清理例外。
+            // 播放資源可能已經停止。
+        }
+
+        try
+        {
+            _lifetime.Cancel();
+        }
+        catch (Exception)
+        {
+            // 取消失敗不影響關閉。
+        }
+
+        try
+        {
+            if (MapView.CoreWebView2 is { } core)
+            {
+                core.WebMessageReceived -= Core_WebMessageReceived;
+                core.NavigationCompleted -= Core_NavigationCompleted;
+                core.Stop();
+            }
+        }
+        catch (Exception)
+        {
+            // WebView2 可能還沒初始化完成。
+        }
+
+        try
+        {
+            _searchClient.Dispose();
+        }
+        catch (Exception)
+        {
+        }
+
+        try
+        {
+            _uploadClient.Dispose();
+        }
+        catch (Exception)
+        {
         }
     }
 }

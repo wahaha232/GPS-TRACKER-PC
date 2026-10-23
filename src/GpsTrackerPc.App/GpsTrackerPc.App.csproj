@@ -4,10 +4,12 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
+    <!-- 工具列圖示區（系統匣）使用 WinForms NotifyIcon。 -->
+    <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>GpsTrackerPc.App</RootNamespace>
     <AssemblyName>GpsTrackerPc</AssemblyName>
     <ApplicationIcon>Assets\GpsTrackerPc.ico</ApplicationIcon>
-    <Version>0.2.1</Version>
+    <Version>0.5.1</Version>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
@@ -15,6 +17,12 @@
          本機預設是本專案往上三層的 ANDROID-APP-DEV\gpstracker-web；GitHub Actions 會用 -p:WebSourceRoot 覆寫。 -->
     <WebSourceRoot Condition="'$(WebSourceRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\ANDROID-APP-DEV\gpstracker-web\</WebSourceRoot>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WinForms 只用於系統匣圖示；不要讓它的命名空間成為全域 using，避免與 WPF 型別衝突。 -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
 
   <ItemGroup>
     <Resource Include="Assets\GpsTrackerPc.ico" />

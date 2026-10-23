@@ -4,8 +4,10 @@ using System.Windows;
 using GpsTrackerPc.App.Infrastructure;
 using GpsTrackerPc.Core.Appearance;
 using GpsTrackerPc.Core.Security;
+using GpsTrackerPc.Core.Settings;
 using GpsTrackerPc.Core.Simulator;
 using GpsTrackerPc.Core.Updates;
+using Microsoft.Win32;
 
 namespace GpsTrackerPc.App;
 
@@ -16,6 +18,8 @@ public partial class SettingsWindow : Window
     private readonly DeviceNameStore _deviceNameStore;
     private readonly UpdateCheckStore _updateCheckStore;
     private readonly ThemeSettingsStore _themeStore;
+    private readonly TraySettingsStore _trayStore;
+    private readonly StorageSettingsStore _storageStore;
     private readonly Func<Task> _checkUpdates;
     private bool _updatingUi;
 
@@ -30,12 +34,15 @@ public partial class SettingsWindow : Window
         _deviceNameStore = deviceNameStore;
         _updateCheckStore = updateCheckStore;
         _themeStore = new ThemeSettingsStore(AppPaths.ThemeFile);
+        _trayStore = new TraySettingsStore(AppPaths.TraySettingsFile);
+        _storageStore = new StorageSettingsStore(AppPaths.StorageSettingsFile);
         _checkUpdates = checkUpdates;
-        DataPathText.Text = AppPaths.DataDirectory;
+        RefreshDataPath();
         DeviceNameBox.Text = _deviceNameStore.Load();
         VersionText.Text = $"目前版本：v{AppVersion.Current}";
         _updatingUi = true;
         AutoCheckUpdatesCheck.IsChecked = _updateCheckStore.Load().AutoCheckEnabled;
+        MinimizeToTrayCheck.IsChecked = _trayStore.Load().MinimizeToTray;
         ThemeBox.ItemsSource = ThemeCatalog.Options;
         ThemeBox.SelectedValue = _themeStore.Load();
         _updatingUi = false;
@@ -62,6 +69,7 @@ public partial class SettingsWindow : Window
             }
 
             _updateCheckStore.SetAutoCheck(AutoCheckUpdatesCheck.IsChecked == true);
+            _trayStore.SetMinimizeToTray(MinimizeToTrayCheck.IsChecked == true);
             DeviceNameStatusText.Text = "已套用設定。";
         }
         catch (Exception ex)
@@ -150,6 +158,28 @@ public partial class SettingsWindow : Window
             MessageBox.Show(
                 this,
                 "儲存自動檢查設定失敗：\n\n" + ex.Message,
+                "儲存失敗",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private void MinimizeToTray_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_updatingUi)
+        {
+            return;
+        }
+
+        try
+        {
+            _trayStore.SetMinimizeToTray(MinimizeToTrayCheck.IsChecked == true);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                "儲存視窗行為設定失敗：\n\n" + ex.Message,
                 "儲存失敗",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
@@ -253,6 +283,102 @@ public partial class SettingsWindow : Window
         {
             MessageBox.Show(this, "無法開啟資料夾：\n\n" + ex.Message, "開啟失敗", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    private void ChooseDataFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "選擇本機資料夾",
+            Multiselect = false,
+            InitialDirectory = Directory.Exists(AppPaths.DataDirectory)
+                ? AppPaths.DataDirectory
+                : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        if (!AppPaths.TryValidateDataDirectory(dialog.FolderName, out var error))
+        {
+            MessageBox.Show(
+                this,
+                "這個資料夾無法寫入：\n\n" + error,
+                "資料夾無法使用",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            _storageStore.SetDataDirectory(dialog.FolderName);
+            RefreshDataPath();
+            MessageBox.Show(
+                this,
+                "已設定本機資料夾。\n\n重新啟動程式後才會改用新路徑；原本的資料不會自動搬移。",
+                "需要重新啟動",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                "儲存本機資料夾設定失敗：\n\n" + ex.Message,
+                "儲存失敗",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void ResetDataFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _storageStore.SetDataDirectory(null);
+            RefreshDataPath();
+            MessageBox.Show(
+                this,
+                "已恢復預設資料夾。\n\n重新啟動程式後生效。",
+                "恢復預設",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                "恢復預設資料夾失敗：\n\n" + ex.Message,
+                "儲存失敗",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void RefreshDataPath()
+    {
+        var configured = _storageStore.Load().DataDirectory;
+        var effective = string.IsNullOrWhiteSpace(configured) ? AppPaths.DefaultDataDirectory : configured;
+        DataPathText.Text = effective;
+
+        var same = false;
+        try
+        {
+            same = string.Equals(
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(effective)),
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(AppPaths.DataDirectory)),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception)
+        {
+            // 路徑格式不正確時視為不同，提示重新啟動後確認。
+        }
+
+        DataFolderStatusText.Text = same
+            ? "目前使用這個資料夾。"
+            : "已變更，重新啟動程式後生效。";
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();

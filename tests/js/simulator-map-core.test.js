@@ -55,6 +55,10 @@ test("style 重置後會重新加回所有自訂 source 與 layer", () => {
   assert.ok(afterStyleReset.getLayer("route-line"));
   assert.ok(afterStyleReset.getLayer("playback-line"));
   assert.ok(afterStyleReset.getLayer("playback-tail-line"));
+
+  // 路線線條要隱藏，軌跡只能由 playback 圖層在移動時畫出來。
+  assert.equal(afterStyleReset.getLayer("route-line").layout.visibility, "none");
+  assert.equal(afterStyleReset.getLayer("route-casing").layout.visibility, "none");
 });
 
 test("重複呼叫不會重複加入 source 或 layer", () => {

@@ -82,14 +82,33 @@
                Background="{DynamicResource AppSurfaceAlt}"
                Foreground="{DynamicResource AppText}"
                BorderBrush="{DynamicResource AppBorderStrong}" />
-      <Button Content="開啟資料夾"
-              HorizontalAlignment="Left"
-              Padding="14,6"
-              Margin="0,10,0,0"
-              Background="{DynamicResource AppBorder}"
-              Foreground="{DynamicResource AppText}"
-              BorderBrush="{DynamicResource AppBorderStrong}"
-              Click="OpenFolder_Click" />
+      <TextBlock x:Name="DataFolderStatusText"
+                 Foreground="{DynamicResource AppTextMuted}"
+                 FontSize="12"
+                 TextWrapping="Wrap"
+                 Margin="0,6,0,0" />
+      <WrapPanel Margin="0,10,0,0">
+        <Button Content="選擇資料夾…"
+                Padding="14,6"
+                Margin="0,0,8,0"
+                Background="{DynamicResource AppBorder}"
+                Foreground="{DynamicResource AppText}"
+                BorderBrush="{DynamicResource AppBorderStrong}"
+                Click="ChooseDataFolder_Click" />
+        <Button Content="恢復預設"
+                Padding="14,6"
+                Margin="0,0,8,0"
+                Background="{DynamicResource AppBorder}"
+                Foreground="{DynamicResource AppText}"
+                BorderBrush="{DynamicResource AppBorderStrong}"
+                Click="ResetDataFolder_Click" />
+        <Button Content="開啟資料夾"
+                Padding="14,6"
+                Background="{DynamicResource AppBorder}"
+                Foreground="{DynamicResource AppText}"
+                BorderBrush="{DynamicResource AppBorderStrong}"
+                Click="OpenFolder_Click" />
+      </WrapPanel>
 
       <Separator Background="{DynamicResource AppBorder}" Margin="0,16,0,0" />
       <TextBlock Text="裝置名稱"
@@ -135,6 +154,24 @@
                 Checked="AutoCheckUpdates_Changed"
                 Unchecked="AutoCheckUpdates_Changed" />
       <TextBlock x:Name="LastCheckText"
+                 Foreground="{DynamicResource AppTextMuted}"
+                 FontSize="12"
+                 TextWrapping="Wrap"
+                 Margin="0,6,0,0" />
+
+      <Separator Background="{DynamicResource AppBorder}" Margin="0,16,0,0" />
+      <TextBlock Text="視窗行為"
+                 Foreground="{DynamicResource AppText}"
+                 FontSize="14"
+                 FontWeight="SemiBold"
+                 Margin="0,16,0,0" />
+      <CheckBox x:Name="MinimizeToTrayCheck"
+                Content="縮小視窗時收到工具列圖示區（系統匣），模擬會在背景繼續執行"
+                Foreground="{DynamicResource AppText}"
+                Margin="0,8,0,0"
+                Checked="MinimizeToTray_Changed"
+                Unchecked="MinimizeToTray_Changed" />
+      <TextBlock Text="開啟後，主視窗縮小會隱藏到系統匣；模擬路線編輯在同一個視窗內，切回首頁或縮小都會繼續在背景執行。圖示選單可回到視窗或結束程式；按關閉（X）仍會結束程式。"
                  Foreground="{DynamicResource AppTextMuted}"
                  FontSize="12"
                  TextWrapping="Wrap"
