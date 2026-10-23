@@ -257,6 +257,136 @@ public class UpdateServiceTests : IDisposable
         await Assert.ThrowsAsync<UpdateException>(() => service.CheckAsync("0.1.0"));
     }
 
+    [Fact]
+    public async Task CheckSendsConfiguredToken()
+    {
+        var handler = new FakeHandler();
+        handler.Routes[UpdateService.LatestApiUrl] = () => JsonResponse(ReleaseJson("0.2.0"));
+        var service = new UpdateService(new HttpClient(handler), tokenProvider: () => "test-token");
+
+        var update = await service.CheckAsync("0.1.0");
+
+        Assert.NotNull(update);
+        Assert.Equal("Bearer test-token", handler.Authorizations[0]);
+    }
+
+    [Fact]
+    public async Task DownloadDoesNotSendToken()
+    {
+        var payload = new byte[] { 1, 2, 3 };
+        var hash = Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant();
+        var handler = new FakeHandler();
+        handler.Routes[ZipUrl] = () => BinaryResponse(payload);
+        handler.Routes[ShaUrl] = () => TextResponse(hash);
+        var service = new UpdateService(new HttpClient(handler), tokenProvider: () => "test-token");
+        var destination = Path.Combine(_root, "update.zip");
+
+        await service.DownloadAsync(CreateUpdate(payload.Length), destination);
+
+        Assert.True(File.Exists(destination));
+        Assert.All(handler.Authorizations, value => Assert.Null(value));
+    }
+
+    [Fact]
+    public async Task InvalidTokenFallsBackToAnonymousCheck()
+    {
+        var handler = new FakeHandler();
+        handler.Dynamic = request =>
+            request.Headers.Contains("Authorization")
+                ? new HttpResponseMessage(HttpStatusCode.Unauthorized)
+                : JsonResponse(ReleaseJson("0.2.0"));
+        var service = new UpdateService(new HttpClient(handler), tokenProvider: () => "expired-token");
+
+        var update = await service.CheckAsync("0.1.0");
+
+        Assert.NotNull(update);
+        Assert.Equal(2, handler.Requested.Count);
+        Assert.Equal("Bearer expired-token", handler.Authorizations[0]);
+        Assert.Null(handler.Authorizations[1]);
+    }
+
+    [Fact]
+    public async Task TokenReadFailureFallsBackToAnonymousCheck()
+    {
+        var handler = new FakeHandler();
+        handler.Routes[UpdateService.LatestApiUrl] = () => JsonResponse(ReleaseJson("0.2.0"));
+        var service = new UpdateService(
+            new HttpClient(handler),
+            tokenProvider: () => throw new InvalidOperationException("DPAPI failed"));
+
+        var update = await service.CheckAsync("0.1.0");
+
+        Assert.NotNull(update);
+        Assert.Null(handler.Authorizations[0]);
+    }
+
+    [Fact]
+    public async Task RateLimitedCheckExplainsResetTimeAndToken()
+    {
+        var reset = DateTimeOffset.UtcNow.AddMinutes(10);
+        var handler = new FakeHandler();
+        handler.Routes[UpdateService.LatestApiUrl] = () =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.Forbidden);
+            response.Headers.TryAddWithoutValidation("X-RateLimit-Remaining", "0");
+            response.Headers.TryAddWithoutValidation(
+                "X-RateLimit-Reset",
+                reset.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture));
+            return response;
+        };
+        var service = new UpdateService(new HttpClient(handler));
+
+        var error = await Assert.ThrowsAsync<UpdateException>(() => service.CheckAsync("0.5.2"));
+
+        Assert.Contains("403", error.Message);
+        Assert.Contains("查詢次數已用完", error.Message);
+        Assert.Contains("GitHub Token", error.Message);
+        Assert.Contains(reset.ToLocalTime().ToString("HH:mm"), error.Message);
+    }
+
+    [Fact]
+    public async Task TooManyRequestsSuggestsWaiting()
+    {
+        var handler = new FakeHandler();
+        handler.Routes[UpdateService.LatestApiUrl] = () =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+            response.Headers.RetryAfter =
+                new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(30));
+            return response;
+        };
+        var service = new UpdateService(new HttpClient(handler));
+
+        var error = await Assert.ThrowsAsync<UpdateException>(() => service.CheckAsync("0.5.2"));
+
+        Assert.Contains("429", error.Message);
+        Assert.Contains("30 秒", error.Message);
+    }
+
+    [Fact]
+    public async Task ForbiddenWithDetailShowsGitHubMessage()
+    {
+        var handler = new FakeHandler();
+        handler.Routes[UpdateService.LatestApiUrl] = () =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.Forbidden)
+            {
+                Content = new StringContent(
+                    "{\"message\":\"Resource not accessible by personal access token\"}",
+                    Encoding.UTF8,
+                    "application/json"),
+            };
+            response.Headers.TryAddWithoutValidation("X-RateLimit-Remaining", "4999");
+            return response;
+        };
+        var service = new UpdateService(new HttpClient(handler), tokenProvider: () => "limited-token");
+
+        var error = await Assert.ThrowsAsync<UpdateException>(() => service.CheckAsync("0.5.2"));
+
+        Assert.Contains("403", error.Message);
+        Assert.Contains("Resource not accessible by personal access token", error.Message);
+    }
+
     private static UpdateInfo CreateUpdate(long size) =>
         new(
             "0.2.0",
@@ -330,9 +460,14 @@ public class UpdateServiceTests : IDisposable
     {
         public Dictionary<string, Func<HttpResponseMessage>> Routes { get; } = new(StringComparer.Ordinal);
 
+        /// <summary>需要依請求內容（例如有沒有帶 Authorization）回應時使用。</summary>
+        public Func<HttpRequestMessage, HttpResponseMessage>? Dynamic { get; set; }
+
         public List<string> Requested { get; } = new();
 
         public List<string> UserAgents { get; } = new();
+
+        public List<string?> Authorizations { get; } = new();
 
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -341,6 +476,14 @@ public class UpdateServiceTests : IDisposable
             var uri = request.RequestUri!.AbsoluteUri;
             Requested.Add(uri);
             UserAgents.Add(request.Headers.UserAgent.ToString());
+            Authorizations.Add(request.Headers.TryGetValues("Authorization", out var values)
+                ? values.FirstOrDefault()
+                : null);
+            if (Dynamic != null)
+            {
+                return Task.FromResult(Dynamic(request));
+            }
+
             if (!Routes.TryGetValue(uri, out var factory))
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));

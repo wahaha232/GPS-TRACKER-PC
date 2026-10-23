@@ -91,7 +91,8 @@ public partial class MainWindow : Window
         };
         _syncService = new DataSyncService(_httpClient, _dataDirectory, AppPaths.SyncCacheFile);
         _updateClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
-        _updateService = new UpdateService(_updateClient);
+        // 公開 repo 不需要 Token；但已設定的 Token 可以避免未登入每小時 60 次的查詢上限。
+        _updateService = new UpdateService(_updateClient, tokenProvider: () => _tokenStore.Load());
         _updateCheckStore = new UpdateCheckStore(AppPaths.UpdateCheckFile);
         _traySettingsStore = new TraySettingsStore(AppPaths.TraySettingsFile);
         _minimizeToTray = _traySettingsStore.Load().MinimizeToTray;

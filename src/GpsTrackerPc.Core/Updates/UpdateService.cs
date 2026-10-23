@@ -27,11 +27,20 @@ public sealed class UpdateService
 
     private readonly HttpClient _httpClient;
     private readonly string _userAgent;
+    private readonly Func<string?>? _tokenProvider;
 
-    public UpdateService(HttpClient httpClient, string userAgent = "GpsTrackerPc/1.0")
+    /// <param name="tokenProvider">
+    /// 選用的 GitHub Token 來源。未登入查詢每小時只有 60 次（同一出口網路共用），
+    /// 有 Token 時查詢 Release 會帶上授權以提高上限；Token 只用於 api.github.com，不會帶到下載網址。
+    /// </param>
+    public UpdateService(
+        HttpClient httpClient,
+        string userAgent = "GpsTrackerPc/1.0",
+        Func<string?>? tokenProvider = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _userAgent = string.IsNullOrWhiteSpace(userAgent) ? "GpsTrackerPc/1.0" : userAgent;
+        _tokenProvider = tokenProvider;
     }
 
     /// <summary>回傳比目前版本新的更新；沒有新版本時回傳 null。</summary>
@@ -39,21 +48,170 @@ public sealed class UpdateService
         string currentVersion,
         CancellationToken cancellationToken = default)
     {
+        var token = ReadToken();
+        var usedToken = !string.IsNullOrEmpty(token);
+        var response = await SendCheckAsync(token, cancellationToken).ConfigureAwait(false);
+
+        // Token 失效就改回未登入查詢，不要讓更新檢查因此失敗。
+        if (usedToken && response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            response.Dispose();
+            usedToken = false;
+            response = await SendCheckAsync(token: null, cancellationToken).ConfigureAwait(false);
+        }
+
+        using (response)
+        {
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                throw new UpdateException(
+                    "找不到更新 Release（HTTP 404），可能尚未建立，或 GitHub repo 還不存在。");
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw await CreateFailureAsync(response, usedToken, cancellationToken).ConfigureAwait(false);
+            }
+
+            var json = await ReadBoundedAsync(response, MaxJsonBytes, cancellationToken).ConfigureAwait(false);
+            return ParseRelease(json, currentVersion);
+        }
+    }
+
+    private async Task<HttpResponseMessage> SendCheckAsync(string? token, CancellationToken cancellationToken)
+    {
         using var request = new HttpRequestMessage(HttpMethod.Get, LatestApiUrl);
         AddHeaders(request);
-        using var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
-        if (response.StatusCode == HttpStatusCode.NotFound)
+        if (!string.IsNullOrEmpty(token))
         {
-            throw new UpdateException(
-                "找不到更新 Release（HTTP 404），可能尚未建立，或 GitHub repo 還不存在。");
+            request.Headers.TryAddWithoutValidation("Authorization", "Bearer " + token);
         }
 
-        if (!response.IsSuccessStatusCode)
+        return await SendAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    private string? ReadToken()
+    {
+        if (_tokenProvider == null)
         {
-            throw new UpdateException($"查詢更新失敗（HTTP {(int)response.StatusCode}）");
+            return null;
         }
 
-        var json = await ReadBoundedAsync(response, MaxJsonBytes, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return _tokenProvider();
+        }
+        catch (Exception)
+        {
+            // Token 讀取失敗（例如 DPAPI 解密失敗）就當作未設定，不影響更新檢查。
+            return null;
+        }
+    }
+
+    /// <summary>把 GitHub 的 403／429 等錯誤轉成使用者看得懂、可以照著處理的說明。</summary>
+    private static async Task<UpdateException> CreateFailureAsync(
+        HttpResponseMessage response,
+        bool usedToken,
+        CancellationToken cancellationToken)
+    {
+        var status = (int)response.StatusCode;
+
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            return new UpdateException(
+                "GitHub 拒絕這個 Token（HTTP 401），可能已失效或複製不完整。請到設定畫面重新輸入 Token。");
+        }
+
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            var wait = ReadRetryAfter(response);
+            return new UpdateException(
+                "GitHub 暫時限制查詢（HTTP 429）" +
+                (wait is null ? "。" : $"，約 {wait.Value.TotalSeconds:0} 秒後可再試。") +
+                "請稍後再檢查。");
+        }
+
+        if (response.StatusCode == HttpStatusCode.Forbidden)
+        {
+            if (IsRateLimited(response))
+            {
+                var reset = ReadRateLimitReset(response);
+                var resetText = reset is null
+                    ? string.Empty
+                    : $"配額約在 {reset.Value:HH:mm} 重設，";
+                var hint = usedToken
+                    ? "已設定的 GitHub Token 可能沒有讀取 Release 的權限，請確認後再試。"
+                    : "未登入每小時只有 60 次查詢，同一網路的所有程式共用；到設定畫面填入 GitHub Token 可提高上限。";
+                return new UpdateException(
+                    "GitHub 查詢次數已用完（HTTP 403）。" + resetText + hint);
+            }
+
+            var detail = await ReadErrorMessageAsync(response, cancellationToken).ConfigureAwait(false);
+            return new UpdateException(
+                "GitHub 拒絕查詢（HTTP 403）" +
+                (detail.Length == 0 ? "。" : $"：{detail}"));
+        }
+
+        return new UpdateException($"查詢更新失敗（HTTP {status}）");
+    }
+
+    private static bool IsRateLimited(HttpResponseMessage response) =>
+        response.Headers.TryGetValues("X-RateLimit-Remaining", out var values) &&
+        string.Equals(values.FirstOrDefault(), "0", StringComparison.Ordinal);
+
+    private static DateTimeOffset? ReadRateLimitReset(HttpResponseMessage response)
+    {
+        if (!response.Headers.TryGetValues("X-RateLimit-Reset", out var values) ||
+            !long.TryParse(values.FirstOrDefault(), out var seconds))
+        {
+            return null;
+        }
+
+        try
+        {
+            return DateTimeOffset.FromUnixTimeSeconds(seconds).ToLocalTime();
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
+    }
+
+    private static TimeSpan? ReadRetryAfter(HttpResponseMessage response)
+    {
+        if (response.Headers.RetryAfter?.Delta is { } delta)
+        {
+            return delta;
+        }
+
+        if (response.Headers.RetryAfter?.Date is { } date)
+        {
+            var wait = date - DateTimeOffset.UtcNow;
+            return wait > TimeSpan.Zero ? wait : TimeSpan.Zero;
+        }
+
+        return null;
+    }
+
+    private static async Task<string> ReadErrorMessageAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var body = await ReadBoundedAsync(response, MaxJsonBytes, cancellationToken).ConfigureAwait(false);
+            using var document = JsonDocument.Parse(body);
+            var message = GetString(document.RootElement, "message");
+            return message.Length > 200 ? message[..200] : message;
+        }
+        catch (Exception ex) when (ex is JsonException or UpdateException)
+        {
+            return string.Empty;
+        }
+    }
+
+    private static UpdateInfo? ParseRelease(string json, string currentVersion)
+    {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
 
