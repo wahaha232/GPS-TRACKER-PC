@@ -28,25 +28,49 @@ public sealed class UpdateService
     private readonly HttpClient _httpClient;
     private readonly string _userAgent;
     private readonly Func<string?>? _tokenProvider;
+    private readonly TimeSpan _checkTimeout;
+    private readonly TimeSpan _downloadTimeout;
 
     /// <param name="tokenProvider">
     /// 選用的 GitHub Token 來源。未登入查詢每小時只有 60 次（同一出口網路共用），
     /// 有 Token 時查詢 Release 會帶上授權以提高上限；Token 只用於 api.github.com，不會帶到下載網址。
     /// </param>
+    /// <param name="downloadTimeout">
+    /// 單一更新檔的下載上限。單檔 EXE 約 200 MB，不能用查詢用的 60 秒逾時。
+    /// </param>
     public UpdateService(
         HttpClient httpClient,
         string userAgent = "GpsTrackerPc/1.0",
-        Func<string?>? tokenProvider = null)
+        Func<string?>? tokenProvider = null,
+        TimeSpan? checkTimeout = null,
+        TimeSpan? downloadTimeout = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _userAgent = string.IsNullOrWhiteSpace(userAgent) ? "GpsTrackerPc/1.0" : userAgent;
         _tokenProvider = tokenProvider;
+        _checkTimeout = checkTimeout ?? TimeSpan.FromSeconds(60);
+        _downloadTimeout = downloadTimeout ?? TimeSpan.FromMinutes(30);
     }
 
     /// <summary>回傳比目前版本新的更新；沒有新版本時回傳 null。</summary>
     public async Task<UpdateInfo?> CheckAsync(
         string currentVersion,
         CancellationToken cancellationToken = default)
+    {
+        using var timeout = CreateTimeout(_checkTimeout, cancellationToken);
+        try
+        {
+            return await CheckCoreAsync(currentVersion, timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new UpdateException("查詢更新逾時，請確認網路後再試。");
+        }
+    }
+
+    private async Task<UpdateInfo?> CheckCoreAsync(
+        string currentVersion,
+        CancellationToken cancellationToken)
     {
         var token = ReadToken();
         var usedToken = !string.IsNullOrEmpty(token);
@@ -303,6 +327,24 @@ public sealed class UpdateService
         IProgress<double?>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        using var timeout = CreateTimeout(_downloadTimeout, cancellationToken);
+        try
+        {
+            await DownloadCoreAsync(update, destinationPath, progress, timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new UpdateException(
+                $"下載更新逾時（超過 {_downloadTimeout.TotalMinutes:0} 分鐘），已刪除暫存檔");
+        }
+    }
+
+    private async Task DownloadCoreAsync(
+        UpdateInfo update,
+        string destinationPath,
+        IProgress<double?>? progress,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(update);
         if (!UpdateVersion.IsSafeDownloadUrl(update.DownloadUrl) ||
             !UpdateVersion.IsSafeDownloadUrl(update.ChecksumUrl))
@@ -511,6 +553,17 @@ public sealed class UpdateService
         node.TryGetInt64(out var size)
             ? size
             : 0L;
+
+    private static CancellationTokenSource CreateTimeout(TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (timeout > TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
+        {
+            source.CancelAfter(timeout);
+        }
+
+        return source;
+    }
 
     private static void TryDelete(string path)
     {

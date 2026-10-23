@@ -70,6 +70,15 @@
                 Orientation="Horizontal"
                 HorizontalAlignment="Right"
                 Margin="0,14,0,0">
+      <Button x:Name="CancelButton"
+              Content="取消下載"
+              IsEnabled="False"
+              Padding="18,7"
+              Margin="8,0,0,0"
+              Background="{DynamicResource AppBorder}"
+              Foreground="{DynamicResource AppText}"
+              BorderBrush="{DynamicResource AppBorderStrong}"
+              Click="CancelDownload_Click" />
       <Button x:Name="UpdateButton"
               Content="更新"
               Padding="18,7"

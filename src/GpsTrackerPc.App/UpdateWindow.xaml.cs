@@ -14,6 +14,7 @@ public partial class UpdateWindow : Window
     private readonly UpdateInfo? _initialUpdate;
     private UpdateInfo? _update;
     private bool _busy;
+    private CancellationTokenSource? _downloadCts;
 
     public UpdateWindow(
         UpdateService updateService,
@@ -126,6 +127,8 @@ public partial class UpdateWindow : Window
         }
 
         SetBusy(true);
+        _downloadCts?.Dispose();
+        _downloadCts = new CancellationTokenSource();
         try
         {
             var fileName = Path.GetFileName(_update.AssetName);
@@ -155,7 +158,7 @@ public partial class UpdateWindow : Window
                 }
             });
 
-            await _updateService.DownloadAsync(_update, destination, progress);
+            await _updateService.DownloadAsync(_update, destination, progress, _downloadCts.Token);
 
             var executable = Environment.ProcessPath
                 ?? Path.Combine(AppContext.BaseDirectory, "GpsTrackerPc.exe");
@@ -172,12 +175,18 @@ public partial class UpdateWindow : Window
             StatusText.Text = "更新完成，正在重新啟動…";
             Application.Current.Shutdown();
         }
+        catch (OperationCanceledException)
+        {
+            StatusText.Text = "已取消下載，未安裝更新。";
+        }
         catch (Exception ex)
         {
             ShowError("更新失敗，已保留舊版：" + ex.Message);
         }
         finally
         {
+            _downloadCts?.Dispose();
+            _downloadCts = null;
             SetBusy(false);
         }
     }
@@ -199,10 +208,23 @@ public partial class UpdateWindow : Window
         _busy = busy;
         UpdateButton.IsEnabled = !busy && _update != null;
         CloseButton.IsEnabled = !busy;
+        CancelButton.IsEnabled = busy;
         if (!busy)
         {
             Progress.Value = 0;
         }
+    }
+
+    private void CancelDownload_Click(object sender, RoutedEventArgs e)
+    {
+        if (_downloadCts == null || _downloadCts.IsCancellationRequested)
+        {
+            return;
+        }
+
+        _downloadCts.Cancel();
+        CancelButton.IsEnabled = false;
+        StatusText.Text = "正在取消下載…";
     }
 
     private void Close_Click(object sender, RoutedEventArgs e)
@@ -218,6 +240,7 @@ public partial class UpdateWindow : Window
         if (_busy)
         {
             e.Cancel = true;
+            StatusText.Text = "下載中，請先按「取消下載」或等完成。";
         }
     }
 }

@@ -387,6 +387,58 @@ public class UpdateServiceTests : IDisposable
         Assert.Contains("Resource not accessible by personal access token", error.Message);
     }
 
+    [Fact]
+    public async Task DownloadTimesOutWhenServerStalls()
+    {
+        var handler = new FakeHandler();
+        handler.Routes[ZipUrl] = () => StallingResponse(TimeSpan.FromSeconds(5));
+        var service = new UpdateService(
+            new HttpClient(handler),
+            downloadTimeout: TimeSpan.FromMilliseconds(150));
+        var destination = Path.Combine(_root, "timeout.zip");
+
+        var error = await Assert.ThrowsAsync<UpdateException>(() =>
+            service.DownloadAsync(CreateUpdate(100), destination));
+
+        Assert.Contains("逾時", error.Message);
+        Assert.False(File.Exists(destination));
+        Assert.False(File.Exists(destination + ".part"));
+    }
+
+    [Fact]
+    public async Task DownloadCanBeCancelledByCaller()
+    {
+        var handler = new FakeHandler();
+        handler.Routes[ZipUrl] = () => StallingResponse(TimeSpan.FromSeconds(5));
+        var service = new UpdateService(
+            new HttpClient(handler),
+            downloadTimeout: TimeSpan.FromMinutes(1));
+        var destination = Path.Combine(_root, "cancelled.zip");
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            service.DownloadAsync(
+                CreateUpdate(100),
+                destination,
+                cancellationToken: cancellation.Token));
+
+        Assert.False(File.Exists(destination));
+    }
+
+    [Fact]
+    public async Task CheckTimesOutWhenServerStalls()
+    {
+        var handler = new FakeHandler();
+        handler.Routes[UpdateService.LatestApiUrl] = () => StallingResponse(TimeSpan.FromSeconds(5));
+        var service = new UpdateService(
+            new HttpClient(handler),
+            checkTimeout: TimeSpan.FromMilliseconds(150));
+
+        var error = await Assert.ThrowsAsync<UpdateException>(() => service.CheckAsync("0.5.5"));
+
+        Assert.Contains("逾時", error.Message);
+    }
+
     private static UpdateInfo CreateUpdate(long size) =>
         new(
             "0.2.0",
@@ -454,6 +506,67 @@ public class UpdateServiceTests : IDisposable
         }
 
         return response;
+    }
+
+    private static HttpResponseMessage StallingResponse(TimeSpan delay) =>
+        new(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new StallingStream(delay)),
+        };
+
+    private sealed class StallingStream : Stream
+    {
+        private readonly TimeSpan _delay;
+
+        public StallingStream(TimeSpan delay)
+        {
+            _delay = delay;
+        }
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
+
+        public override async Task<int> ReadAsync(
+            byte[] buffer,
+            int offset,
+            int count,
+            CancellationToken cancellationToken)
+        {
+            await Task.Delay(_delay, cancellationToken);
+            return 0;
+        }
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(_delay, cancellationToken);
+            return 0;
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private sealed class FakeHandler : HttpMessageHandler

@@ -91,7 +91,9 @@ public partial class MainWindow : Window
             Timeout = TimeSpan.FromSeconds(60),
         };
         _syncService = new DataSyncService(_httpClient, _dataDirectory, AppPaths.SyncCacheFile);
-        _updateClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        // 逾時由 UpdateService 分開控制（查詢 60 秒、下載 30 分鐘），
+        // 不能讓 HttpClient 的整體逾時把 200 MB 的下載中途砍掉。
+        _updateClient = new HttpClient { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
         // 公開 repo 不需要 Token；但已設定的 Token 可以避免未登入每小時 60 次的查詢上限。
         _updateService = new UpdateService(_updateClient, tokenProvider: () => _tokenStore.Load());
         _updateCheckStore = new UpdateCheckStore(AppPaths.UpdateCheckFile);
