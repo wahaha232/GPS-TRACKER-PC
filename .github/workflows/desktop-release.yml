@@ -13,8 +13,9 @@ jobs:
   release:
     runs-on: windows-latest
     env:
-      # App 專案會把這個資料夾複製到輸出與單一 EXE 裡。
-      WebSourceRoot: ${{ github.workspace }}\gpstracker-web\
+      # App 專案會把這個資料夾複製到輸出與單一 EXE 裡；只指向網站子資料夾，
+      # 不要把整個 ANDROID-APP-DEV 打包進 web\。
+      WebSourceRoot: ${{ github.workspace }}\android-app-dev\gpstracker-web\
 
     steps:
       - name: Checkout PC repo
@@ -24,7 +25,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: wahaha232/ANDROID-APP-DEV
-          path: gpstracker-web
+          path: android-app-dev
+          # 只取網站子資料夾，其他 App（GPSTracker、Calculator…）不要下載。
+          sparse-checkout: gpstracker-web
+          sparse-checkout-cone-mode: true
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -68,6 +72,31 @@ jobs:
           -p:DebugType=None
           -p:DebugSymbols=false
           -o publish
+
+      - name: Verify packaged web folder
+        shell: pwsh
+        run: |
+          $web = Join-Path $env:GITHUB_WORKSPACE "publish\web"
+          if (-not (Test-Path -LiteralPath $web -PathType Container)) {
+            throw "找不到 publish\web：網頁沒有一起打包"
+          }
+
+          $index = Join-Path $web "index.html"
+          if (-not (Test-Path -LiteralPath $index -PathType Leaf)) {
+            throw "打包缺少 web\index.html，程式打開會是空白頁"
+          }
+
+          # 這些資料夾出現在 web\ 就代表打包範圍錯了（整個 repo 或別的 App 被包進來）。
+          $forbidden = @("gpstracker-web", "GPSTracker", "Calculator", "HealthTracker", "WEATHER APP_V2", ".git")
+          $bad = @(Get-ChildItem -LiteralPath $web -Directory -Recurse -Force |
+            Where-Object { $forbidden -contains $_.Name })
+          if ($bad.Count -gt 0) {
+            $names = ($bad | ForEach-Object { $_.FullName.Substring($web.Length).TrimStart('\') }) -join "、"
+            throw "web\ 裡有不該出現的資料夾：$names"
+          }
+
+          $fileCount = @(Get-ChildItem -LiteralPath $web -Recurse -File).Count
+          Write-Host "網頁打包檢查通過：web\index.html 存在，共 $fileCount 個檔案"
 
       - name: Package and checksum
         shell: pwsh
