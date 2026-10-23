@@ -35,6 +35,31 @@ public class GpxTrackBuilderTests
     }
 
     [Fact]
+    public void ParseIgnoresCommentsAndCData()
+    {
+        const string xml = """
+            <gpx xmlns="http://www.topografix.com/GPX/1/1">
+              <!-- <trkpt lat="88.0" lon="88.0"><ele>1</ele><time>2026-10-10T00:00:00Z</time></trkpt> -->
+              <trk>
+                <!-- <name>假名稱</name> -->
+                <name>真名稱</name>
+                <trkseg>
+                  <trkpt lat="25.0" lon="121.5"><time>2026-10-10T00:00:00Z</time></trkpt>
+                  <trkpt lat="25.001" lon="121.5"><time>2026-10-10T00:00:10Z</time></trkpt>
+                  <![CDATA[ <trkpt lat="77.0" lon="77.0"><time>2026-10-10T00:00:20Z</time></trkpt> ]]>
+                </trkseg>
+              </trk>
+            </gpx>
+            """;
+
+        var parsed = GpxTrackBuilder.Parse(xml);
+
+        Assert.Equal("真名稱", parsed.Name);
+        Assert.Equal(2, parsed.Points.Count);
+        Assert.DoesNotContain(parsed.Points, point => point.Lat > 80 || point.Lon > 170);
+    }
+
+    [Fact]
     public void BuildCalculatesDistanceTimeSpeedElevationAndPointFormat()
     {
         var parsed = GpxTrackBuilder.Parse(Gpx(Walk(300, 3, elevation: seconds => 20 + seconds * 0.1)));

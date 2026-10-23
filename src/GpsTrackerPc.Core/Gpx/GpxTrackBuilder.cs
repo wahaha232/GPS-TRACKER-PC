@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace GpsTrackerPc.Core.Gpx;
@@ -46,7 +47,8 @@ public static class GpxTrackBuilder
     /// <summary>解析 GPX 文字；多個 trk／trkseg 會依檔案順序合併。</summary>
     public static GpxDocument Parse(string? xml)
     {
-        var text = xml ?? string.Empty;
+        // 註解與 CDATA 裡的 <trkpt>／<name> 不是真的資料，先遮掉再交給 regex。
+        var text = MaskCommentsAndCData(xml ?? string.Empty);
         string? name = null;
         var nameMatch = TrackNameRegex.Match(text);
         if (nameMatch.Success)
@@ -83,6 +85,50 @@ public static class GpxTrackBuilder
         }
 
         return new GpxDocument(name, points);
+    }
+
+    /// <summary>把 XML 註解與 CDATA 內容換成空白，避免 regex 從中抓到假的 trkpt／name。</summary>
+    private static string MaskCommentsAndCData(string text)
+    {
+        var commentAt = text.IndexOf("<!--", StringComparison.Ordinal);
+        var cdataAt = text.IndexOf("<![CDATA[", StringComparison.Ordinal);
+        if (commentAt < 0 && cdataAt < 0)
+        {
+            return text;
+        }
+
+        var builder = new StringBuilder(text.Length);
+        var index = 0;
+        while (index < text.Length)
+        {
+            commentAt = text.IndexOf("<!--", index, StringComparison.Ordinal);
+            cdataAt = text.IndexOf("<![CDATA[", index, StringComparison.Ordinal);
+            var start = commentAt < 0
+                ? cdataAt
+                : cdataAt < 0
+                    ? commentAt
+                    : Math.Min(commentAt, cdataAt);
+            if (start < 0)
+            {
+                builder.Append(text, index, text.Length - index);
+                break;
+            }
+
+            builder.Append(text, index, start - index);
+            builder.Append(' ');
+            if (start == commentAt)
+            {
+                var end = text.IndexOf("-->", start + 4, StringComparison.Ordinal);
+                index = end < 0 ? text.Length : end + 3;
+            }
+            else
+            {
+                var end = text.IndexOf("]]>", start + 9, StringComparison.Ordinal);
+                index = end < 0 ? text.Length : end + 3;
+            }
+        }
+
+        return builder.ToString();
     }
 
     /// <summary>轉成網站紀錄格式；失敗時回傳 Error 代碼。</summary>
