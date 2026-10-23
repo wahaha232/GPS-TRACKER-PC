@@ -22,4 +22,15 @@ internal static class ModeCatalog
 
     public static string DisplayName(string? mode) =>
         Options.FirstOrDefault(option => option.Value == mode)?.Label ?? "❓ 未知";
+
+    /// <summary>依平均速度給一個合理的預設移動方式；使用者仍可自行改選。</summary>
+    public static string SuggestForSpeed(double kilometersPerHour) => kilometersPerHour switch
+    {
+        <= 6 => "WALKING",
+        <= 12 => "RUNNING",
+        <= 25 => "BICYCLE",
+        <= 60 => "MOTORCYCLE",
+        <= 160 => "CAR",
+        _ => "UNKNOWN",
+    };
 }

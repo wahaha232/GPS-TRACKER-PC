@@ -33,6 +33,21 @@ public class SimulatedRecordBuilderTests
     }
 
     [Fact]
+    public void ProvidedModeIsWrittenToEntryAndTrack()
+    {
+        var result = SimulatedRecordBuilder.Build(
+            CreatePlayback(),
+            StartTime,
+            "PC",
+            id: "sim-track",
+            mode: "BICYCLE");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("BICYCLE", result.Entry!.DominantMode);
+        Assert.Equal("BICYCLE", result.Track!.DominantMode);
+    }
+
+    [Fact]
     public void StatisticsFollowGpxTrackBuilderRules()
     {
         var playback = CreatePlayback();

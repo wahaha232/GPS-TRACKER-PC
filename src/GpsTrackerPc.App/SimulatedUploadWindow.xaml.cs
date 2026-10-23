@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net.Http;
 using System.Windows;
+using GpsTrackerPc.App.Infrastructure;
 using GpsTrackerPc.Core.Gpx;
 using GpsTrackerPc.Core.Security;
 using GpsTrackerPc.Core.Simulator;
@@ -16,6 +17,7 @@ public partial class SimulatedUploadWindow : Window
     private readonly string _deviceName;
     private readonly string _trackId = Guid.NewGuid().ToString();
     private bool _busy;
+    private bool _suppressModeChange;
 
     public SimulatedUploadWindow(
         PlaybackResult playback,
@@ -29,10 +31,27 @@ public partial class SimulatedUploadWindow : Window
         _uploader = new GitHubRecordUploader(httpClient, tokenStore);
         _deviceName = DeviceNameStore.Validate(deviceName);
         StartTimeBox.Text = DateTimeOffset.Now.ToString("yyyy/MM/dd HH:mm:ss", CultureInfo.InvariantCulture);
+        ModeBox.ItemsSource = ModeCatalog.Options;
+        _suppressModeChange = true;
+        var preview = SimulatedRecordBuilder.Build(_playback, DateTimeOffset.Now, _deviceName, _trackId);
+        if (preview.IsSuccess)
+        {
+            ModeBox.SelectedValue = ModeCatalog.SuggestForSpeed(preview.Track!.AvgSpeedMps * 3.6);
+        }
+
+        _suppressModeChange = false;
         RefreshSummary();
     }
 
     public bool Uploaded { get; private set; }
+
+    private void ModeBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!_suppressModeChange && IsInitialized)
+        {
+            RefreshSummary();
+        }
+    }
 
     private void StartTimeBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
@@ -57,7 +76,12 @@ public partial class SimulatedUploadWindow : Window
             return;
         }
 
-        var build = SimulatedRecordBuilder.Build(_playback, startTime, _deviceName, _trackId);
+        var build = SimulatedRecordBuilder.Build(
+            _playback,
+            startTime,
+            _deviceName,
+            _trackId,
+            ModeBox.SelectedValue as string);
         if (!build.IsSuccess)
         {
             SummaryText.Text = "無法轉成紀錄：" + GpxErrors.Get(build.Error!);
@@ -72,6 +96,7 @@ public partial class SimulatedUploadWindow : Window
             $"距離：{(track.DistanceMeters / 1000.0).ToString("0.00", CultureInfo.InvariantCulture)} km\n" +
             $"時間：{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}\n" +
             $"點數：{track.GpsPointCount}\n" +
+            $"移動方式：{ModeCatalog.DisplayName(track.DominantMode)}\n" +
             $"裝置：{_deviceName}\n" +
             $"來源：simulated（模擬）" +
             (_playback.Completed ? string.Empty : "\n狀態：未完成（播放中途停止）");
@@ -102,7 +127,12 @@ public partial class SimulatedUploadWindow : Window
             return;
         }
 
-        var build = SimulatedRecordBuilder.Build(_playback, startTime, _deviceName, _trackId);
+        var build = SimulatedRecordBuilder.Build(
+            _playback,
+            startTime,
+            _deviceName,
+            _trackId,
+            ModeBox.SelectedValue as string);
         if (!build.IsSuccess)
         {
             StatusText.Text = "無法轉成紀錄：" + GpxErrors.Get(build.Error!);

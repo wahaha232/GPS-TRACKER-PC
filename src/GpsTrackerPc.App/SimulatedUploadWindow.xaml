@@ -61,6 +61,21 @@
                 BorderBrush="{DynamicResource AppBorderStrong}"
                 Click="Now_Click" />
       </StackPanel>
+      <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+        <TextBlock Text="移動方式"
+                   Foreground="{DynamicResource AppText}"
+                   FontSize="13"
+                   VerticalAlignment="Center"
+                   Margin="0,0,8,0" />
+        <ComboBox x:Name="ModeBox"
+                  Width="170"
+                  DisplayMemberPath="Label"
+                  SelectedValuePath="Value"
+                  Background="{DynamicResource AppSurfaceAlt}"
+                  Foreground="{DynamicResource AppText}"
+                  BorderBrush="{DynamicResource AppBorderStrong}"
+                  SelectionChanged="ModeBox_SelectionChanged" />
+      </StackPanel>
     </StackPanel>
 
     <Border Grid.Row="3"
