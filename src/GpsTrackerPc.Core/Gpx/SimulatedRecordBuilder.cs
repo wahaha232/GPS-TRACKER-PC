@@ -1,5 +1,6 @@
 using GpsTrackerPc.Core.Simulator;
 using GpsTrackerPc.Simulation.Model;
+using GpsTrackerPc.Simulation.Routes;
 
 namespace GpsTrackerPc.Core.Gpx;
 
@@ -97,5 +98,29 @@ public static class SimulatedRecordBuilder
             HasAltitude: false);
 
         return new GpxBuildResult(track, entry, summary, null);
+    }
+
+    /// <summary>把重啟前暫存的模擬狀態轉成紀錄（給「存檔並結束」使用）。</summary>
+    public static GpxBuildResult BuildFromResumeSnapshot(
+        SimulationResumeSnapshot snapshot,
+        DateTimeOffset startTime,
+        string deviceName,
+        string? mode = null)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        var route = RouteJsonCodec.Decode(snapshot.RouteJson);
+        if (route == null)
+        {
+            return GpxBuildResult.Fail("bad-route");
+        }
+
+        var playback = new PlaybackResult(
+            route,
+            snapshot.Samples,
+            snapshot.ElapsedSeconds,
+            snapshot.DistanceMeters,
+            Completed: false,
+            snapshot.Laps);
+        return Build(playback, startTime, deviceName, mode: mode);
     }
 }

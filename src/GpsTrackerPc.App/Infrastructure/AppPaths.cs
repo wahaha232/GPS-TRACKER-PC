@@ -31,6 +31,15 @@ internal static class AppPaths
     /// <summary>用過的 GPX 檔路徑，供模擬頁重複載入。</summary>
     public static string GpxHistoryFile => Path.Combine(Root, "gpx-history.json");
 
+    /// <summary>背景下載的更新檔；依版本放在子資料夾。</summary>
+    public static string UpdateDownloadDirectory => Path.Combine(Root, "updates");
+
+    /// <summary>下載完成、尚未上傳的模擬紀錄。</summary>
+    public static string PendingRecordsDirectory => Path.Combine(Root, "pending-records");
+
+    /// <summary>重啟前暫存的模擬路線狀態。</summary>
+    public static string RestartSessionFile => Path.Combine(Root, "restart-session.json");
+
     public static string RoutesDirectory => Path.Combine(Root, "routes");
 
     public static string CrashLogFile => Path.Combine(Root, "crash.log");

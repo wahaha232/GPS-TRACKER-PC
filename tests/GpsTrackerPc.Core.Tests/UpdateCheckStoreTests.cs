@@ -76,4 +76,36 @@ public class UpdateCheckStoreTests : IDisposable
         Assert.Null(store.Load().LastCheckMs);
         Assert.True(store.ShouldAutoCheck(DateTimeOffset.UtcNow));
     }
+
+    [Fact]
+    public void SavesBackgroundDownloadInstallModeAndPendingUploadFlags()
+    {
+        var store = new UpdateCheckStore(_path);
+
+        Assert.True(store.Load().BackgroundDownloadEnabled);
+        Assert.Equal(UpdateInstallMode.Manual, store.Load().InstallMode);
+        Assert.True(store.Load().AutoUploadPendingRecords);
+
+        store.SetBackgroundDownload(false);
+        store.SetInstallMode(UpdateInstallMode.Automatic);
+        store.SetAutoUploadPendingRecords(false);
+
+        var state = store.Load();
+        Assert.False(state.BackgroundDownloadEnabled);
+        Assert.Equal(UpdateInstallMode.Automatic, state.InstallMode);
+        Assert.False(state.AutoUploadPendingRecords);
+    }
+
+    [Fact]
+    public void OldSettingFileKeepsNewDefaults()
+    {
+        File.WriteAllText(_path, """{"autoCheckEnabled":false,"lastCheckMs":123}""");
+        var state = new UpdateCheckStore(_path).Load();
+
+        Assert.False(state.AutoCheckEnabled);
+        Assert.Equal(123, state.LastCheckMs);
+        Assert.True(state.BackgroundDownloadEnabled);
+        Assert.Equal(UpdateInstallMode.Manual, state.InstallMode);
+        Assert.True(state.AutoUploadPendingRecords);
+    }
 }

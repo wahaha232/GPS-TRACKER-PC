@@ -153,11 +153,34 @@
                 Margin="0,8,0,0"
                 Checked="AutoCheckUpdates_Changed"
                 Unchecked="AutoCheckUpdates_Changed" />
+      <CheckBox x:Name="BackgroundDownloadCheck"
+                Content="背景下載更新檔（下載完成後可在工具列安裝）"
+                Foreground="{DynamicResource AppText}"
+                Margin="0,6,0,0"
+                Checked="BackgroundDownload_Changed"
+                Unchecked="BackgroundDownload_Changed" />
+      <CheckBox x:Name="AutoInstallUpdateCheck"
+                Content="下載後自動安裝（安裝完成後提醒重啟程式）"
+                Foreground="{DynamicResource AppText}"
+                Margin="0,6,0,0"
+                Checked="AutoInstallUpdate_Changed"
+                Unchecked="AutoInstallUpdate_Changed" />
+      <CheckBox x:Name="AutoUploadPendingCheck"
+                Content="每隔幾分鐘比對並自動補傳未上傳的模擬紀錄"
+                Foreground="{DynamicResource AppText}"
+                Margin="0,6,0,0"
+                Checked="AutoUploadPending_Changed"
+                Unchecked="AutoUploadPending_Changed" />
       <TextBlock x:Name="LastCheckText"
                  Foreground="{DynamicResource AppTextMuted}"
                  FontSize="12"
                  TextWrapping="Wrap"
                  Margin="0,6,0,0" />
+      <TextBlock Text="背景下載會先存到本機 updates 資料夾並驗證 SHA-256；安裝只替換程式檔，重啟後才會套用新版本。"
+                 Foreground="{DynamicResource AppTextMuted}"
+                 FontSize="11"
+                 TextWrapping="Wrap"
+                 Margin="0,4,0,0" />
 
       <Separator Background="{DynamicResource AppBorder}" Margin="0,16,0,0" />
       <TextBlock Text="視窗行為"

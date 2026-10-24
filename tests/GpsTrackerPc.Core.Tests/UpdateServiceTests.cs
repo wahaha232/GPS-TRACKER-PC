@@ -80,6 +80,33 @@ public class UpdateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CheckPicksChecksumForTheSelectedExeWhenZipChecksumComesFirst()
+    {
+        const string exeUrl =
+            "https://github.com/wahaha232/GPS-TRACKER-PC/releases/download/gpstracker-desktop-latest/GpsTrackerPc.exe";
+        var handler = new FakeHandler();
+        handler.Routes[UpdateService.LatestApiUrl] = () => JsonResponse(JsonSerializer.Serialize(new
+        {
+            name = "GPS Tracker PC v0.8.0",
+            body = "release notes",
+            assets = new object[]
+            {
+                new { name = "GpsTrackerPc-win-x64.zip", browser_download_url = ZipUrl, size = 123 },
+                new { name = "GpsTrackerPc-win-x64.zip.sha256", browser_download_url = ZipUrl + ".sha256", size = 100 },
+                new { name = "GpsTrackerPc.exe", browser_download_url = exeUrl, size = 456 },
+                new { name = "GpsTrackerPc.exe.sha256", browser_download_url = exeUrl + ".sha256", size = 100 },
+            },
+        }));
+        var service = new UpdateService(new HttpClient(handler));
+
+        var update = await service.CheckAsync("0.6.0");
+
+        Assert.NotNull(update);
+        Assert.Equal("GpsTrackerPc.exe", update!.AssetName);
+        Assert.Equal(exeUrl + ".sha256", update.ChecksumUrl);
+    }
+
+    [Fact]
     public async Task CheckReturnsNullWhenVersionIsNotNewer()
     {
         var handler = new FakeHandler();

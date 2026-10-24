@@ -171,6 +171,66 @@ public class PlaybackControllerTests
         Assert.Throws<ArgumentException>(() => controller.SetSpeedMultiplier(0));
     }
 
+
+    [Fact]
+    public void RestoreContinuesFromSnapshotWithoutDuplicatingSamples()
+    {
+        var route = CreateRoute();
+        var original = new PlaybackController(route);
+        original.SetSpeedMultiplier(2);
+        original.Start();
+        original.Advance(TimeSpan.FromSeconds(3));
+        var elapsed = original.ElapsedSeconds;
+        var samples = original.Samples.ToList();
+
+        var snapshot = new SimulationResumeSnapshot(
+            RouteJsonCodec.Encode(route),
+            elapsed,
+            original.DistanceMeters,
+            1,
+            2,
+            WasPlaying: true,
+            samples,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+
+        var restored = PlaybackController.Restore(route, snapshot);
+
+        Assert.Equal(PlaybackState.Playing, restored.State);
+        Assert.Equal(samples.Count, restored.Samples.Count);
+        TestAssert.Close(elapsed, restored.ElapsedSeconds, 1e-3);
+
+        restored.Advance(TimeSpan.FromSeconds(1));
+
+        Assert.True(restored.Samples.Count > samples.Count);
+        TestAssert.Close(elapsed + 2, restored.ElapsedSeconds, 1e-3);
+        Assert.Equal(
+            restored.Samples.Select(sample => sample.ElapsedSeconds).Distinct().Count(),
+            restored.Samples.Count);
+    }
+
+    [Fact]
+    public void RestoreKeepsPausedState()
+    {
+        var route = CreateRoute();
+        var snapshot = new SimulationResumeSnapshot(
+            RouteJsonCodec.Encode(route),
+            1,
+            0,
+            1,
+            1,
+            WasPlaying: false,
+            new[]
+            {
+                new PlaybackSample(new Coordinates(0.0, 0.0), 0, 0, false),
+                new PlaybackSample(new Coordinates(0.0005, 0.0), 1, 10, false),
+            },
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+
+        var restored = PlaybackController.Restore(route, snapshot);
+
+        Assert.Equal(PlaybackState.Paused, restored.State);
+        Assert.False(restored.BuildResult().Completed);
+    }
     private static void AssertSamplesEqual(
         IReadOnlyList<PlaybackSample> expected,
         IReadOnlyList<PlaybackSample> actual)

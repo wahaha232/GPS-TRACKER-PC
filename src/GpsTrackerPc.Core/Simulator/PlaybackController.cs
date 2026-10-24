@@ -120,6 +120,84 @@ public sealed class PlaybackController
         RecordSample(_current);
     }
 
+    /// <summary>
+    /// 從重啟前暫存的狀態接續播放：保留先前取樣點，位置直接跳到當時的模擬秒數。
+    /// </summary>
+    public static PlaybackController Restore(
+        SimulationRoute route,
+        SimulationResumeSnapshot snapshot,
+        bool? startPlaying = null)
+    {
+        ArgumentNullException.ThrowIfNull(route);
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (snapshot.Samples.Count < 2)
+        {
+            throw new ArgumentException("暫存的取樣點不足，無法繼續。", nameof(snapshot));
+        }
+
+        var controller = new PlaybackController(route, Math.Max(1, snapshot.Laps));
+        controller.SetSpeedMultiplier(snapshot.SpeedMultiplier);
+        controller.RestoreCore(snapshot, startPlaying ?? snapshot.WasPlaying);
+        return controller;
+    }
+
+    private void RestoreCore(SimulationResumeSnapshot snapshot, bool playing)
+    {
+        _simulator = new RouteSimulator(_route);
+        _current = _simulator.Current();
+
+        var remaining = Math.Max(0.0, snapshot.ElapsedSeconds);
+        while (remaining > Epsilon && !_current.IsComplete)
+        {
+            var step = Math.Min(remaining, 600.0);
+            _current = _simulator.Advance(step);
+            remaining -= step;
+        }
+
+        _samples.Clear();
+        foreach (var sample in snapshot.Samples)
+        {
+            if (!double.IsFinite(sample.Coordinates.Latitude) ||
+                !double.IsFinite(sample.Coordinates.Longitude) ||
+                !double.IsFinite(sample.ElapsedSeconds))
+            {
+                continue;
+            }
+
+            if (_samples.Count > 0 && sample.ElapsedSeconds <= _samples[^1].ElapsedSeconds + 1e-6)
+            {
+                continue;
+            }
+
+            _samples.Add(sample);
+        }
+
+        _distanceMeters = snapshot.DistanceMeters > 0
+            ? snapshot.DistanceMeters
+            : DistanceOf(_samples);
+        var lastElapsed = Math.Max(
+            snapshot.ElapsedSeconds,
+            _samples.Count > 0 ? _samples[^1].ElapsedSeconds : 0.0);
+        _nextSampleAt = Math.Floor(lastElapsed / SampleIntervalSeconds) * SampleIntervalSeconds +
+            SampleIntervalSeconds;
+        State = _current.IsComplete
+            ? PlaybackState.Completed
+            : playing
+                ? PlaybackState.Playing
+                : PlaybackState.Paused;
+    }
+
+    private static double DistanceOf(IReadOnlyList<PlaybackSample> samples)
+    {
+        var distance = 0.0;
+        for (var index = 1; index < samples.Count; index++)
+        {
+            distance += GeoMath.DistanceMeters(samples[index - 1].Coordinates, samples[index].Coordinates);
+        }
+
+        return distance;
+    }
+
     public void Pause()
     {
         if (State == PlaybackState.Playing)

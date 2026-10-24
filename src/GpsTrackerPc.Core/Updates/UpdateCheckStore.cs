@@ -4,9 +4,23 @@ using GpsTrackerPc.Core.Util;
 
 namespace GpsTrackerPc.Core.Updates;
 
-public sealed record UpdateCheckState(bool AutoCheckEnabled, long? LastCheckMs);
+public enum UpdateInstallMode
+{
+    /// <summary>背景下載完成後，等使用者按「安裝更新」。</summary>
+    Manual,
 
-/// <summary>記錄自動檢查更新開關與上次檢查時間；啟動時一天最多檢查一次。</summary>
+    /// <summary>背景下載完成後直接安裝，之後只要重啟程式。</summary>
+    Automatic,
+}
+
+public sealed record UpdateCheckState(
+    bool AutoCheckEnabled,
+    long? LastCheckMs,
+    bool BackgroundDownloadEnabled = true,
+    UpdateInstallMode InstallMode = UpdateInstallMode.Manual,
+    bool AutoUploadPendingRecords = true);
+
+/// <summary>記錄自動檢查更新、背景下載、安裝方式與上次檢查時間；啟動時一天最多檢查一次。</summary>
 public sealed class UpdateCheckStore
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
@@ -39,7 +53,10 @@ public sealed class UpdateCheckStore
                 SerializerOptions);
             return new UpdateCheckState(
                 stored?.AutoCheckEnabled ?? true,
-                stored?.LastCheckMs);
+                stored?.LastCheckMs,
+                stored?.BackgroundDownloadEnabled ?? true,
+                stored?.InstallMode ?? UpdateInstallMode.Manual,
+                stored?.AutoUploadPendingRecords ?? true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -65,13 +82,17 @@ public sealed class UpdateCheckStore
     }
 
     public void MarkChecked(DateTimeOffset now) =>
-        Save(new UpdateCheckState(Load().AutoCheckEnabled, now.ToUnixTimeMilliseconds()));
+        Save(Load() with { LastCheckMs = now.ToUnixTimeMilliseconds() });
 
-    public void SetAutoCheck(bool enabled)
-    {
-        var state = Load();
-        Save(new UpdateCheckState(enabled, state.LastCheckMs));
-    }
+    public void SetAutoCheck(bool enabled) => Save(Load() with { AutoCheckEnabled = enabled });
+
+    public void SetBackgroundDownload(bool enabled) =>
+        Save(Load() with { BackgroundDownloadEnabled = enabled });
+
+    public void SetInstallMode(UpdateInstallMode mode) => Save(Load() with { InstallMode = mode });
+
+    public void SetAutoUploadPendingRecords(bool enabled) =>
+        Save(Load() with { AutoUploadPendingRecords = enabled });
 
     public void Save(UpdateCheckState state)
     {
@@ -80,6 +101,9 @@ public sealed class UpdateCheckStore
             {
                 AutoCheckEnabled = state.AutoCheckEnabled,
                 LastCheckMs = state.LastCheckMs,
+                BackgroundDownloadEnabled = state.BackgroundDownloadEnabled,
+                InstallMode = state.InstallMode,
+                AutoUploadPendingRecords = state.AutoUploadPendingRecords,
             },
             SerializerOptions);
         AtomicFile.WriteAllBytes(_filePath, Encoding.UTF8.GetBytes(json));
@@ -90,5 +114,11 @@ public sealed class UpdateCheckStore
         public bool? AutoCheckEnabled { get; set; }
 
         public long? LastCheckMs { get; set; }
+
+        public bool? BackgroundDownloadEnabled { get; set; }
+
+        public UpdateInstallMode? InstallMode { get; set; }
+
+        public bool? AutoUploadPendingRecords { get; set; }
     }
 }

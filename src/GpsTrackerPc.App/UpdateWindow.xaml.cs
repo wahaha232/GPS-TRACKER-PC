@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using GpsTrackerPc.Core.Updates;
@@ -12,6 +11,7 @@ public partial class UpdateWindow : Window
     private readonly UpdateCheckStore _checkStore;
     private readonly string _currentVersion;
     private readonly UpdateInfo? _initialUpdate;
+    private readonly Action? _requestRestart;
     private UpdateInfo? _update;
     private bool _busy;
     private CancellationTokenSource? _downloadCts;
@@ -20,13 +20,15 @@ public partial class UpdateWindow : Window
         UpdateService updateService,
         UpdateCheckStore checkStore,
         string currentVersion,
-        UpdateInfo? initialUpdate = null)
+        UpdateInfo? initialUpdate = null,
+        Action? requestRestart = null)
     {
         InitializeComponent();
         _updateService = updateService;
         _checkStore = checkStore;
         _currentVersion = currentVersion;
         _initialUpdate = initialUpdate;
+        _requestRestart = requestRestart;
         CurrentVersionText.Text = $"目前版本：v{_currentVersion}";
         UpdateButton.IsEnabled = false;
     }
@@ -162,10 +164,8 @@ public partial class UpdateWindow : Window
 
             var executable = Environment.ProcessPath
                 ?? Path.Combine(AppContext.BaseDirectory, "GpsTrackerPc.exe");
-            var apply = UpdateInstaller.Apply(destination, executable, () =>
-            {
-                Process.Start(new ProcessStartInfo(executable) { UseShellExecute = true });
-            });
+            // 不在這裡直接開新行程：先讓主視窗暫停模擬並存檔，再由同一個流程重啟。
+            var apply = UpdateInstaller.Apply(destination, executable, restart: () => { });
             if (!apply.Success)
             {
                 ShowError("更新失敗，已保留舊版：" + apply.ErrorMessage);
@@ -173,7 +173,15 @@ public partial class UpdateWindow : Window
             }
 
             StatusText.Text = "更新完成，正在重新啟動…";
-            Application.Current.Shutdown();
+            SetBusy(false);
+            if (_requestRestart != null)
+            {
+                _requestRestart();
+            }
+            else
+            {
+                Application.Current.Shutdown();
+            }
         }
         catch (OperationCanceledException)
         {

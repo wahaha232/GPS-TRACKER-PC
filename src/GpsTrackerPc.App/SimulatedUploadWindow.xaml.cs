@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO;
 using System.Net.Http;
 using System.Windows;
 using GpsTrackerPc.App.Infrastructure;
@@ -14,6 +15,7 @@ public partial class SimulatedUploadWindow : Window
     private readonly PlaybackResult _playback;
     private readonly TokenStore _tokenStore;
     private readonly GitHubRecordUploader _uploader;
+    private readonly PendingRecordStore _pendingStore = new(AppPaths.PendingRecordsDirectory);
     private readonly string _deviceName;
     private readonly string _trackId = Guid.NewGuid().ToString();
     private bool _busy;
@@ -161,6 +163,7 @@ public partial class SimulatedUploadWindow : Window
             {
                 case UploadStatus.Uploaded:
                     Uploaded = true;
+                    _pendingStore.Remove(_trackId);
                     _busy = false;
                     SetBusy(false);
                     StatusText.Text = string.IsNullOrWhiteSpace(result.Warning)
@@ -176,21 +179,41 @@ public partial class SimulatedUploadWindow : Window
                     Close();
                     break;
                 case UploadStatus.Duplicate:
+                    _pendingStore.Remove(_trackId);
                     StatusText.Text = "已跳過：GitHub 上已有相同開始時間與距離的紀錄。";
                     break;
                 default:
-                    StatusText.Text = "上傳失敗：" + (result.ErrorMessage ?? "未知錯誤");
+                    SavePending(build);
+                    StatusText.Text = "上傳失敗：" + (result.ErrorMessage ?? "未知錯誤") +
+                        "\n已存到本機待上傳清單，網路恢復或下次檢查時會自動補傳。";
                     break;
             }
         }
         catch (Exception ex)
         {
-            StatusText.Text = "上傳失敗：" + ex.Message;
+            SavePending(build);
+            StatusText.Text = "上傳失敗：" + ex.Message +
+                "\n已存到本機待上傳清單，網路恢復或下次檢查時會自動補傳。";
         }
         finally
         {
             _busy = false;
             SetBusy(false);
+        }
+    }
+
+    private void SavePending(GpxBuildResult build)
+    {
+        try
+        {
+            if (build.IsSuccess)
+            {
+                _pendingStore.Save(build);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            // 存不進待上傳清單時，至少畫面上的錯誤訊息已經顯示。
         }
     }
 

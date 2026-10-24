@@ -41,7 +41,12 @@ public partial class SettingsWindow : Window
         DeviceNameBox.Text = _deviceNameStore.Load();
         VersionText.Text = $"目前版本：v{AppVersion.Current}";
         _updatingUi = true;
-        AutoCheckUpdatesCheck.IsChecked = _updateCheckStore.Load().AutoCheckEnabled;
+        var updateState = _updateCheckStore.Load();
+        AutoCheckUpdatesCheck.IsChecked = updateState.AutoCheckEnabled;
+        BackgroundDownloadCheck.IsChecked = updateState.BackgroundDownloadEnabled;
+        AutoInstallUpdateCheck.IsChecked = updateState.InstallMode == UpdateInstallMode.Automatic;
+        AutoInstallUpdateCheck.IsEnabled = updateState.BackgroundDownloadEnabled;
+        AutoUploadPendingCheck.IsChecked = updateState.AutoUploadPendingRecords;
         MinimizeToTrayCheck.IsChecked = _trayStore.Load().MinimizeToTray;
         ThemeBox.ItemsSource = ThemeCatalog.Options;
         ThemeBox.SelectedValue = _themeStore.Load();
@@ -69,6 +74,11 @@ public partial class SettingsWindow : Window
             }
 
             _updateCheckStore.SetAutoCheck(AutoCheckUpdatesCheck.IsChecked == true);
+            _updateCheckStore.SetBackgroundDownload(BackgroundDownloadCheck.IsChecked == true);
+            _updateCheckStore.SetInstallMode(AutoInstallUpdateCheck.IsChecked == true
+                ? UpdateInstallMode.Automatic
+                : UpdateInstallMode.Manual);
+            _updateCheckStore.SetAutoUploadPendingRecords(AutoUploadPendingCheck.IsChecked == true);
             _trayStore.SetMinimizeToTray(MinimizeToTrayCheck.IsChecked == true);
             DeviceNameStatusText.Text = "已套用設定。";
         }
@@ -155,13 +165,80 @@ public partial class SettingsWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
-                this,
-                "儲存自動檢查設定失敗：\n\n" + ex.Message,
-                "儲存失敗",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            ShowUpdateSettingsError(ex);
         }
+    }
+
+    private void BackgroundDownload_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_updatingUi)
+        {
+            return;
+        }
+
+        try
+        {
+            var enabled = BackgroundDownloadCheck.IsChecked == true;
+            _updateCheckStore.SetBackgroundDownload(enabled);
+            AutoInstallUpdateCheck.IsEnabled = enabled;
+            if (!enabled)
+            {
+                _updatingUi = true;
+                AutoInstallUpdateCheck.IsChecked = false;
+                _updatingUi = false;
+                _updateCheckStore.SetInstallMode(UpdateInstallMode.Manual);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowUpdateSettingsError(ex);
+        }
+    }
+
+    private void AutoInstallUpdate_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_updatingUi)
+        {
+            return;
+        }
+
+        try
+        {
+            _updateCheckStore.SetInstallMode(AutoInstallUpdateCheck.IsChecked == true
+                ? UpdateInstallMode.Automatic
+                : UpdateInstallMode.Manual);
+        }
+        catch (Exception ex)
+        {
+            ShowUpdateSettingsError(ex);
+        }
+    }
+
+    private void AutoUploadPending_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_updatingUi)
+        {
+            return;
+        }
+
+        try
+        {
+            _updateCheckStore.SetAutoUploadPendingRecords(AutoUploadPendingCheck.IsChecked == true);
+        }
+        catch (Exception ex)
+        {
+            ShowUpdateSettingsError(ex);
+        }
+    }
+
+    private void ShowUpdateSettingsError(Exception ex)
+    {
+        MessageBox.Show(
+            this,
+            "儲存更新設定失敗：\n\n" + ex.Message,
+            "儲存失敗",
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
     }
 
     private void MinimizeToTray_Changed(object sender, RoutedEventArgs e)

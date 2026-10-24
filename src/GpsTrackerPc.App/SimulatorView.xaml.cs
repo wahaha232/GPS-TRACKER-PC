@@ -62,6 +62,7 @@ public partial class SimulatorView : UserControl
     private bool _hasUnsavedChanges;
     private bool _locating;
     private bool _autoLocateAttempted;
+    private bool _pausedByNetwork;
     private bool _closing;
     private Window? _hostWindow;
 
@@ -108,6 +109,158 @@ public partial class SimulatorView : UserControl
     public PlaybackResult? LastPlaybackResult => _lastPlayback;
 
     public bool HasUnsavedChanges => _hasUnsavedChanges;
+
+    /// <summary>重啟程式前呼叫：暫停播放並把目前路線與取樣點交給呼叫端暫存。</summary>
+    public SimulationResumeSnapshot? PrepareForRestart()
+    {
+        try
+        {
+            var wasPlaying = _playback?.State == PlaybackState.Playing;
+            if (wasPlaying)
+            {
+                _playback!.Pause();
+            }
+
+            _playbackTimer.Stop();
+            _playbackWatch.Reset();
+
+            var samples = _playback?.Samples ?? _lastPlayback?.Samples;
+            if (samples == null || samples.Count < 2)
+            {
+                return null;
+            }
+
+            var route = _playback != null
+                ? _playback.BuildResult().Route
+                : _lastPlayback!.Route;
+            var elapsed = _playback?.ElapsedSeconds ?? _lastPlayback?.ElapsedSeconds ?? 0.0;
+            var distance = _playback?.DistanceMeters ?? _lastPlayback?.DistanceMeters ?? 0.0;
+            var laps = _playback?.MaxLaps ?? 1;
+            return new SimulationResumeSnapshot(
+                RouteJsonCodec.Encode(route),
+                elapsed,
+                distance,
+                laps,
+                _selectedSpeedMultiplier,
+                wasPlaying,
+                samples.ToList(),
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>從重啟前暫存的狀態恢復路線與播放位置。</summary>
+    public async Task RestoreRestartSnapshotAsync(SimulationResumeSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        var route = RouteJsonCodec.Decode(snapshot.RouteJson)
+            ?? throw new InvalidOperationException("暫存的路線格式不正確，無法繼續。");
+        if (snapshot.Samples.Count < 2)
+        {
+            throw new InvalidOperationException("暫存的取樣點不足，無法繼續。");
+        }
+
+        _route.ReplaceRoute(route);
+        _selectedWaypointId = _route.Waypoints.Count > 0 ? _route.Waypoints[0].Id : null;
+        _hasUnsavedChanges = true;
+        _updatingUi = true;
+        LapsBox.Text = Math.Max(1, snapshot.Laps).ToString(CultureInfo.InvariantCulture);
+        PlaybackSpeedBox.SelectedItem = PlaybackSpeedBox.Items
+            .OfType<ComboBoxItem>()
+            .FirstOrDefault(item => item.Tag?.ToString() == snapshot.SpeedMultiplier.ToString("0", CultureInfo.InvariantCulture));
+        _updatingUi = false;
+        RefreshAllUi(updateName: true);
+        SendRoute();
+        PostFit();
+
+        var controller = PlaybackController.Restore(route, snapshot);
+        _playback = controller;
+        _lastPlayback = null;
+        _lastPlaybackCoordinate = controller.Current?.Coordinates;
+        _sentSampleCount = 0;
+        _mapStream = new PlaybackMapStream();
+        foreach (var sample in controller.Samples)
+        {
+            _mapStream.Append(sample);
+        }
+
+        // 地圖可能還沒載入完成，等網頁回報 ready 再送播放資料。
+        for (var attempt = 0; attempt < 100 && !_webReady && !_closing; attempt++)
+        {
+            await Task.Delay(100);
+        }
+
+        if (_closing)
+        {
+            return;
+        }
+
+        var current = controller.Current;
+        Post(new
+        {
+            type = "playbackReset",
+            lat = current?.Coordinates.Latitude,
+            lon = current?.Coordinates.Longitude,
+        });
+        if (_mapUpdatesEnabled)
+        {
+            SendMapFrame(_mapStream.BuildFrame(forceReplace: true));
+        }
+
+        SendPlaybackPosition();
+        UpdatePlaybackUi();
+        SetPlaybackControlState();
+        if (controller.State == PlaybackState.Playing)
+        {
+            _playbackWatch.Restart();
+            _playbackTimer.Start();
+            SetStatus($"已從重啟前的暫停點繼續模擬（{controller.ElapsedSeconds:0} 秒）。");
+        }
+        else
+        {
+            SetStatus($"已恢復暫停中的模擬（{controller.ElapsedSeconds:0} 秒），按「繼續」再開始播放。");
+        }
+    }
+
+    /// <summary>網路中斷時自動暫停；恢復連線後由 <see cref="ResumeAfterNetworkOutage"/> 接續。</summary>
+    public void PauseForNetworkOutage()
+    {
+        if (_playback?.State != PlaybackState.Playing)
+        {
+            return;
+        }
+
+        _pausedByNetwork = true;
+        _playback.Pause();
+        _playbackTimer.Stop();
+        _playbackWatch.Reset();
+        UpdatePlaybackUi();
+        SetPlaybackControlState();
+        SetStatus("網路中斷，已暫停模擬；恢復連線後會自動繼續。");
+    }
+
+    public void ResumeAfterNetworkOutage()
+    {
+        if (!_pausedByNetwork)
+        {
+            return;
+        }
+
+        _pausedByNetwork = false;
+        if (_playback?.State != PlaybackState.Paused)
+        {
+            return;
+        }
+
+        _playback.Resume();
+        _playbackWatch.Restart();
+        _playbackTimer.Start();
+        SetPlaybackControlState();
+        SetStatus("網路恢復，已自動繼續模擬。");
+    }
 
     private async void View_Loaded(object sender, RoutedEventArgs e)
     {
@@ -1168,6 +1321,7 @@ public partial class SimulatorView : UserControl
         controller.Start();
         _playback = controller;
         _lastPlayback = null;
+        _pausedByNetwork = false;
         _lastPlaybackCoordinate = controller.Current?.Coordinates;
         _mapStream = new PlaybackMapStream();
         _pendingFullFrame = null;
@@ -1206,6 +1360,7 @@ public partial class SimulatorView : UserControl
         _playback.Pause();
         _playbackTimer.Stop();
         _playbackWatch.Reset();
+        _pausedByNetwork = false;
         UpdatePlaybackUi();
         SetPlaybackControlState();
         SetStatus("播放已暫停。");
@@ -1221,6 +1376,7 @@ public partial class SimulatorView : UserControl
         _playback.Resume();
         _playbackWatch.Restart();
         _playbackTimer.Start();
+        _pausedByNetwork = false;
         SetPlaybackControlState();
         SetStatus("繼續播放。");
     }
@@ -1235,6 +1391,7 @@ public partial class SimulatorView : UserControl
         _playback.Stop();
         _playbackTimer.Stop();
         _playbackWatch.Reset();
+        _pausedByNetwork = false;
         _lastPlayback = _playback.BuildResult();
         AppendNewPlaybackSamples();
         if (_mapUpdatesEnabled)

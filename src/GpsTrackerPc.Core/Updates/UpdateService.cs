@@ -256,16 +256,18 @@ public sealed class UpdateService
         string? zipUrl = null;
         string? zipName = null;
         long zipSize = 0;
+        var checksumUrls = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var asset in assets.EnumerateArray())
         {
             var name = GetString(asset, "name");
             var url = GetString(asset, "browser_download_url");
-            if (name.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase))
+            if (name.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase) ||
+                name.EndsWith(".sha256.txt", StringComparison.OrdinalIgnoreCase))
             {
-                if (checksumUrl == null && UpdateVersion.IsSafeDownloadUrl(url))
+                if (UpdateVersion.IsSafeDownloadUrl(url))
                 {
-                    checksumUrl = url;
+                    checksumUrls[name] = url;
                 }
 
                 continue;
@@ -298,6 +300,19 @@ public sealed class UpdateService
         if (string.IsNullOrWhiteSpace(downloadUrl) || string.IsNullOrWhiteSpace(assetName))
         {
             throw new UpdateException("Release 裡找不到安全的 EXE／ZIP");
+        }
+
+        // 必須挑「同一個檔案」的檢查碼；Release 同時有 EXE 與 ZIP 的 .sha256 時，
+        // 不能拿到哪個就用哪個，否則會把 ZIP 的雜湊拿來驗 EXE。
+        if (checksumUrls.TryGetValue(assetName + ".sha256", out var matchedChecksum) ||
+            checksumUrls.TryGetValue(assetName + ".sha256.txt", out matchedChecksum))
+        {
+            checksumUrl = matchedChecksum;
+        }
+        else if (checksumUrls.Count == 1 && (exeUrl == null) != (zipUrl == null))
+        {
+            // 只有單一候選檔案的舊 Release 才容許用唯一的檢查碼。
+            checksumUrl = checksumUrls.Values.First();
         }
 
         if (string.IsNullOrWhiteSpace(checksumUrl))
