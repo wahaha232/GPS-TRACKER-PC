@@ -74,3 +74,4 @@
 - 2026-10-24｜Kilo｜發佈 v0.9.0：GitHub Actions `Desktop release`（run 40128962938）全數通過；Release 標題「GPS Tracker PC v0.9.0」，EXE sha256 `4336e56d…` 與 digest 相符，ZIP 檢查碼為 `.sha256.txt`；目前尚未建立 `gpstracker-desktop-beta`，切到測試通道會顯示 404 提示，等日後推 `v*-beta` tag 才會有 beta Release｜下一步：使用者實機測試暫停續傳、回滾、待上傳管理、每日上限、離線橫幅、單一實例與重啟續傳
 - 2026-10-24｜Kilo｜修正裝置名稱沿用（v0.9.1）：沿用目前名稱一律允許（即使 manifest 同名紀錄是非模擬來源），設定成網站上其他既有名稱改為警告可合併、不再阻擋；版本更新不需換名稱，新模擬紀錄歸在同名裝置下繼承既有紀錄；更新 SCOPE／README，新增「沿用非模擬名稱」與「沿用目前名稱」測試；未開啟視窗驗證 UI｜Core 223、Simulation 57（合計 280）通過，`dotnet build` 0 警告 0 錯誤｜下一步：發佈 v0.9.1
 - 2026-10-24｜Kilo｜修正 SocialTests 偶發失敗：`TamperedEnvelopeIsRejected` 原本改最後一個 Base64Url 字元，可能只改到 padding 位元、解碼後位元組不變；改為改中間字元，社交測試連續 5 次通過｜Core 223、Simulation 57 全數通過
+- 2026-10-24｜Kilo｜發佈 v0.9.1：GitHub Actions `Desktop release`（run 40131432824）全數通過；Release 標題「GPS Tracker PC v0.9.1」，EXE sha256 `8b8dbb15…` 與 digest 相符｜下一步：使用者實機把裝置名稱設回 HOMEPC，確認可直接儲存且網站既有紀錄仍在
