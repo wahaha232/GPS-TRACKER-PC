@@ -11,6 +11,7 @@ public partial class UpdateWindow : Window
     private readonly UpdateCheckStore _checkStore;
     private readonly string _currentVersion;
     private readonly UpdateInfo? _initialUpdate;
+    private readonly UpdateChannel _channel;
     private readonly Action? _requestRestart;
     private UpdateInfo? _update;
     private bool _busy;
@@ -21,6 +22,7 @@ public partial class UpdateWindow : Window
         UpdateCheckStore checkStore,
         string currentVersion,
         UpdateInfo? initialUpdate = null,
+        UpdateChannel channel = UpdateChannel.Stable,
         Action? requestRestart = null)
     {
         InitializeComponent();
@@ -28,6 +30,7 @@ public partial class UpdateWindow : Window
         _checkStore = checkStore;
         _currentVersion = currentVersion;
         _initialUpdate = initialUpdate;
+        _channel = channel;
         _requestRestart = requestRestart;
         CurrentVersionText.Text = $"目前版本：v{_currentVersion}";
         UpdateButton.IsEnabled = false;
@@ -50,7 +53,7 @@ public partial class UpdateWindow : Window
         StatusText.Text = "正在檢查雲端版本…";
         try
         {
-            var update = await _updateService.CheckAsync(_currentVersion);
+            var update = await _updateService.CheckAsync(_currentVersion, _channel);
             MarkChecked();
             if (update == null)
             {
@@ -151,19 +154,54 @@ public partial class UpdateWindow : Window
             Directory.CreateDirectory(directory);
             var destination = Path.Combine(directory, fileName);
             StatusText.Text = $"下載更新 v{_update.Version}…";
-            var progress = new Progress<double?>(value =>
+            var downloadFinished = false;
+            var progress = new Progress<UpdateDownloadProgress>(value =>
             {
-                if (value.HasValue)
+                if (downloadFinished)
                 {
-                    Progress.Value = Math.Clamp(value.Value, 0.0, 1.0);
-                    StatusText.Text = $"下載更新 v{_update.Version}… {value.Value:P0}";
+                    return;
                 }
+
+                if (value.Fraction is { } fraction)
+                {
+                    Progress.Value = Math.Clamp(fraction, 0.0, 1.0);
+                }
+
+                StatusText.Text =
+                    $"下載更新 v{_update.Version}… " +
+                    (value.Fraction is { } percent ? percent.ToString("P0") : FormatBytes(value.BytesReceived)) +
+                    $"・{FormatBytes(value.BytesPerSecond)}/s";
             });
 
-            await _updateService.DownloadAsync(_update, destination, progress, _downloadCts.Token);
+            try
+            {
+                await _updateService.DownloadWithResumeAsync(_update, destination, progress, _downloadCts.Token);
+            }
+            finally
+            {
+                downloadFinished = true;
+            }
+
+            var signature = UpdateSignature.Inspect(destination);
+            if (signature.Status == UpdateSignatureStatus.Invalid)
+            {
+                ShowError("更新檔數位簽章不合法，已停止安裝：" + (signature.Error ?? "簽章驗證失敗"));
+                return;
+            }
 
             var executable = Environment.ProcessPath
                 ?? Path.Combine(AppContext.BaseDirectory, "GpsTrackerPc.exe");
+            var requiredBytes = new FileInfo(destination).Length * 2 + 50L * 1024 * 1024;
+            if (!UpdateInstallChecks.HasFreeSpace(
+                    Path.GetDirectoryName(executable) ?? AppContext.BaseDirectory,
+                    requiredBytes,
+                    out var availableBytes))
+            {
+                ShowError(
+                    $"安裝空間不足：需要約 {FormatBytes(requiredBytes)}，可用 {FormatBytes(availableBytes)}。");
+                return;
+            }
+
             // 不在這裡直接開新行程：先讓主視窗暫停模擬並存檔，再由同一個流程重啟。
             var apply = UpdateInstaller.Apply(destination, executable, restart: () => { });
             if (!apply.Success)
@@ -185,7 +223,7 @@ public partial class UpdateWindow : Window
         }
         catch (OperationCanceledException)
         {
-            StatusText.Text = "已取消下載，未安裝更新。";
+            StatusText.Text = "已取消下載；已下載的部分會保留，下次下載會嘗試續傳。";
         }
         catch (Exception ex)
         {
@@ -250,5 +288,20 @@ public partial class UpdateWindow : Window
             e.Cancel = true;
             StatusText.Text = "下載中，請先按「取消下載」或等完成。";
         }
+    }
+
+    private static string FormatBytes(double bytes)
+    {
+        if (bytes >= 1024 * 1024)
+        {
+            return $"{bytes / (1024 * 1024):0.0} MB";
+        }
+
+        if (bytes >= 1024)
+        {
+            return $"{bytes / 1024:0.0} KB";
+        }
+
+        return $"{bytes:0} B";
     }
 }

@@ -43,7 +43,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "gpstracker-desktop-latest"
+          $tag = if ($env:GITHUB_REF_NAME -like "*-beta*") { "gpstracker-desktop-beta" } else { "gpstracker-desktop-latest" }
           $releaseName = ""
           $releaseJson = gh release view $tag --json name 2>$null
           if ($LASTEXITCODE -eq 0 -and $releaseJson) {
@@ -61,7 +61,8 @@ jobs:
 
           $guard.Notes | Set-Content -LiteralPath "$env:GITHUB_WORKSPACE\release-notes.md" -Encoding utf8
           "VERSION=$($guard.Version)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host "版本檢查通過：v$($guard.Version)"
+          "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "版本檢查通過：v$($guard.Version)（$tag）"
 
       - name: Verify web source folder
         shell: pwsh
@@ -166,15 +167,26 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "gpstracker-desktop-latest"
+          $tag = $env:RELEASE_TAG
+          if (-not $tag) { $tag = "gpstracker-desktop-latest" }
+          $isBeta = $tag -eq "gpstracker-desktop-beta"
           $title = "GPS Tracker PC v$env:VERSION"
+          if ($isBeta) { $title += "（測試版）" }
           $notesFile = "$env:GITHUB_WORKSPACE\release-notes.md"
 
           gh release view $tag 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title $title --notes-file $notesFile --target $env:GITHUB_SHA --latest
+            if ($isBeta) {
+              gh release create $tag --title $title --notes-file $notesFile --target $env:GITHUB_SHA --prerelease
+            } else {
+              gh release create $tag --title $title --notes-file $notesFile --target $env:GITHUB_SHA --latest
+            }
           } else {
-            gh release edit $tag --title $title --notes-file $notesFile --latest
+            if ($isBeta) {
+              gh release edit $tag --title $title --notes-file $notesFile --prerelease
+            } else {
+              gh release edit $tag --title $title --notes-file $notesFile --latest
+            }
           }
 
           # 舊版用戶端會抓「第一個 .sha256」當成 EXE 檢查碼；同時存在 ZIP 的

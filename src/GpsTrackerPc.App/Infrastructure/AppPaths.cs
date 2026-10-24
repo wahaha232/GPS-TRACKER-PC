@@ -40,6 +40,12 @@ internal static class AppPaths
     /// <summary>重啟前暫存的模擬路線狀態。</summary>
     public static string RestartSessionFile => Path.Combine(Root, "restart-session.json");
 
+    /// <summary>每日自動補傳次數。</summary>
+    public static string UploadQuotaFile => Path.Combine(Root, "upload-quota.json");
+
+    /// <summary>記住重啟後的模擬處理選擇。</summary>
+    public static string ResumePreferenceFile => Path.Combine(Root, "restart-preference.json");
+
     public static string RoutesDirectory => Path.Combine(Root, "routes");
 
     public static string CrashLogFile => Path.Combine(Root, "crash.log");

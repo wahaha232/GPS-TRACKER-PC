@@ -45,6 +45,10 @@ public class UpdateInstallerTests : IDisposable
         Assert.Equal("old-version", File.ReadAllText(_currentExe + ".old"));
 
         UpdateInstaller.CleanupOldVersion(_currentExe);
+        Assert.True(File.Exists(_currentExe + ".old"));
+
+        File.SetLastWriteTimeUtc(_currentExe + ".old", DateTime.UtcNow.AddDays(-8));
+        UpdateInstaller.CleanupOldVersion(_currentExe);
         Assert.False(File.Exists(_currentExe + ".old"));
     }
 

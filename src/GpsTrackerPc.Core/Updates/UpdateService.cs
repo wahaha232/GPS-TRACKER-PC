@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -14,8 +15,19 @@ public sealed class UpdateService
 {
     public const string LatestTag = "gpstracker-desktop-latest";
 
+    public const string BetaTag = "gpstracker-desktop-beta";
+
     public const string LatestApiUrl =
         "https://api.github.com/repos/" + UpdateVersion.Repo + "/releases/tags/" + LatestTag;
+
+    public const string BetaApiUrl =
+        "https://api.github.com/repos/" + UpdateVersion.Repo + "/releases/tags/" + BetaTag;
+
+    public static string TagFor(UpdateChannel channel) =>
+        channel == UpdateChannel.Beta ? BetaTag : LatestTag;
+
+    public static string ApiUrlFor(UpdateChannel channel) =>
+        channel == UpdateChannel.Beta ? BetaApiUrl : LatestApiUrl;
 
     private const int MaxJsonBytes = 512 * 1024;
     private const int MaxChecksumBytes = 16 * 1024;
@@ -55,12 +67,18 @@ public sealed class UpdateService
     /// <summary>回傳比目前版本新的更新；沒有新版本時回傳 null。</summary>
     public async Task<UpdateInfo?> CheckAsync(
         string currentVersion,
+        CancellationToken cancellationToken = default) =>
+        await CheckAsync(currentVersion, UpdateChannel.Stable, cancellationToken).ConfigureAwait(false);
+
+    public async Task<UpdateInfo?> CheckAsync(
+        string currentVersion,
+        UpdateChannel channel,
         CancellationToken cancellationToken = default)
     {
         using var timeout = CreateTimeout(_checkTimeout, cancellationToken);
         try
         {
-            return await CheckCoreAsync(currentVersion, timeout.Token).ConfigureAwait(false);
+            return await CheckCoreAsync(currentVersion, channel, timeout.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -70,26 +88,28 @@ public sealed class UpdateService
 
     private async Task<UpdateInfo?> CheckCoreAsync(
         string currentVersion,
+        UpdateChannel channel,
         CancellationToken cancellationToken)
     {
         var token = ReadToken();
         var usedToken = !string.IsNullOrEmpty(token);
-        var response = await SendCheckAsync(token, cancellationToken).ConfigureAwait(false);
+        var response = await SendCheckAsync(channel, token, cancellationToken).ConfigureAwait(false);
 
         // Token 失效就改回未登入查詢，不要讓更新檢查因此失敗。
         if (usedToken && response.StatusCode == HttpStatusCode.Unauthorized)
         {
             response.Dispose();
             usedToken = false;
-            response = await SendCheckAsync(token: null, cancellationToken).ConfigureAwait(false);
+            response = await SendCheckAsync(channel, token: null, cancellationToken).ConfigureAwait(false);
         }
 
         using (response)
         {
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
-                throw new UpdateException(
-                    "找不到更新 Release（HTTP 404），可能尚未建立，或 GitHub repo 還不存在。");
+                throw new UpdateException(channel == UpdateChannel.Beta
+                    ? "找不到測試版 Release（HTTP 404），目前可能還沒有 beta 版本。"
+                    : "找不到更新 Release（HTTP 404），可能尚未建立，或 GitHub repo 還不存在。");
             }
 
             if (!response.IsSuccessStatusCode)
@@ -102,9 +122,12 @@ public sealed class UpdateService
         }
     }
 
-    private async Task<HttpResponseMessage> SendCheckAsync(string? token, CancellationToken cancellationToken)
+    private async Task<HttpResponseMessage> SendCheckAsync(
+        UpdateChannel channel,
+        string? token,
+        CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, LatestApiUrl);
+        using var request = new HttpRequestMessage(HttpMethod.Get, ApiUrlFor(channel));
         AddHeaders(request);
         if (!string.IsNullOrEmpty(token))
         {
@@ -342,10 +365,14 @@ public sealed class UpdateService
         IProgress<double?>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        var adapter = progress == null
+            ? null
+            : new Progress<UpdateDownloadProgress>(value => progress.Report(value.Fraction));
         using var timeout = CreateTimeout(_downloadTimeout, cancellationToken);
         try
         {
-            await DownloadCoreAsync(update, destinationPath, progress, timeout.Token).ConfigureAwait(false);
+            await DownloadCoreAsync(update, destinationPath, adapter, timeout.Token, keepPartial: false)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -354,11 +381,34 @@ public sealed class UpdateService
         }
     }
 
+    /// <summary>
+    /// 支援暫停後續傳：保留 <c>.part</c>，下次用 HTTP Range 從中斷處繼續，並回報速度。
+    /// </summary>
+    public async Task DownloadWithResumeAsync(
+        UpdateInfo update,
+        string destinationPath,
+        IProgress<UpdateDownloadProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var timeout = CreateTimeout(_downloadTimeout, cancellationToken);
+        try
+        {
+            await DownloadCoreAsync(update, destinationPath, progress, timeout.Token, keepPartial: true)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new UpdateException(
+                $"下載更新逾時（超過 {_downloadTimeout.TotalMinutes:0} 分鐘），已保留暫存檔，可重新下載續傳");
+        }
+    }
+
     private async Task DownloadCoreAsync(
         UpdateInfo update,
         string destinationPath,
-        IProgress<double?>? progress,
-        CancellationToken cancellationToken)
+        IProgress<UpdateDownloadProgress>? progress,
+        CancellationToken cancellationToken,
+        bool keepPartial)
     {
         ArgumentNullException.ThrowIfNull(update);
         if (!UpdateVersion.IsSafeDownloadUrl(update.DownloadUrl) ||
@@ -376,79 +426,149 @@ public sealed class UpdateService
         var partPath = destinationPath + ".part";
         try
         {
-            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            using var request = new HttpRequestMessage(HttpMethod.Get, update.DownloadUrl);
-            AddHeaders(request);
-            using var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
+            var start = keepPartial && File.Exists(partPath)
+                ? new FileInfo(partPath).Length
+                : 0L;
+            var alreadyComplete = keepPartial && update.Size > 0 && start == update.Size;
+            if (start > 0 && update.Size > 0 && start > update.Size)
             {
-                throw new UpdateException($"下載更新失敗（HTTP {(int)response.StatusCode}）");
+                TryDelete(partPath);
+                start = 0;
             }
 
-            EnsureAllowedDownloadResponse(response);
-
-            var contentLength = response.Content.Headers.ContentLength;
-            if (contentLength is { } length && length > MaxAssetBytes)
+            if (!alreadyComplete)
             {
-                throw new UpdateException("更新檔過大，已中止");
+                await DownloadToPartAsync(update, partPath, start, progress, cancellationToken)
+                    .ConfigureAwait(false);
             }
 
-            await using var input = await response.Content
-                .ReadAsStreamAsync(cancellationToken)
-                .ConfigureAwait(false);
-            var buffer = new byte[81920];
-            long total = 0;
-            {
-                await using var output = new FileStream(
-                    partPath,
-                    FileMode.Create,
-                    FileAccess.Write,
-                    FileShare.None,
-                    bufferSize: 81920,
-                    useAsync: true);
-
-                while (true)
-                {
-                    var read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)
-                        .ConfigureAwait(false);
-                    if (read == 0)
-                    {
-                        break;
-                    }
-
-                    total += read;
-                    if (total > MaxAssetBytes)
-                    {
-                        throw new UpdateException("更新檔過大，已中止");
-                    }
-
-                    hash.AppendData(buffer, 0, read);
-                    await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
-                    progress?.Report(contentLength is > 0
-                        ? Math.Clamp((double)total / contentLength.Value, 0.0, 1.0)
-                        : null);
-                }
-
-                await output.FlushAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            var actualHash = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+            var actualHash = await ComputeSha256Async(partPath, cancellationToken).ConfigureAwait(false);
             var expectedHash = await DownloadChecksumAsync(update.ChecksumUrl, cancellationToken)
                 .ConfigureAwait(false);
             if (!string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase))
             {
                 TryDelete(destinationPath);
+                TryDelete(partPath);
                 throw new UpdateException("SHA-256 檢查碼不符，已刪除下載檔");
             }
 
             File.Move(partPath, destinationPath, overwrite: true);
-            progress?.Report(1.0);
+            progress?.Report(new UpdateDownloadProgress(1.0, new FileInfo(destinationPath).Length, null, 0));
         }
         catch
         {
-            TryDelete(partPath);
+            if (!keepPartial)
+            {
+                TryDelete(partPath);
+            }
+
             throw;
         }
+    }
+
+    private async Task DownloadToPartAsync(
+        UpdateInfo update,
+        string partPath,
+        long start,
+        IProgress<UpdateDownloadProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, update.DownloadUrl);
+        AddHeaders(request);
+        if (start > 0)
+        {
+            request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(start, null);
+        }
+
+        using var response = await SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new UpdateException($"下載更新失敗（HTTP {(int)response.StatusCode}）");
+        }
+
+        EnsureAllowedDownloadResponse(response);
+
+        var append = start > 0 && response.StatusCode == HttpStatusCode.PartialContent;
+        if (start > 0 && !append)
+        {
+            // 伺服器忽略 Range，只能從頭下載。
+            start = 0;
+        }
+
+        var contentLength = response.Content.Headers.ContentLength;
+        if (contentLength is { } length && length + start > MaxAssetBytes)
+        {
+            throw new UpdateException("更新檔過大，已中止");
+        }
+
+        var totalBytes = update.Size > 0 ? update.Size : contentLength is > 0 ? start + contentLength : null;
+        await using var input = await response.Content
+            .ReadAsStreamAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var buffer = new byte[81920];
+        long bytesThisRun = 0;
+        var stopwatch = Stopwatch.StartNew();
+        var lastReport = stopwatch.Elapsed;
+        var lastBytes = 0L;
+        {
+            await using var output = new FileStream(
+                partPath,
+                append ? FileMode.Append : FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 81920,
+                useAsync: true);
+
+            while (true)
+            {
+                var read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)
+                    .ConfigureAwait(false);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                bytesThisRun += read;
+                if (start + bytesThisRun > MaxAssetBytes)
+                {
+                    throw new UpdateException("更新檔過大，已中止");
+                }
+
+                await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+
+                var elapsed = stopwatch.Elapsed;
+                if (elapsed - lastReport >= TimeSpan.FromMilliseconds(250))
+                {
+                    var bytesPerSecond = (bytesThisRun - lastBytes) /
+                        Math.Max(0.001, (elapsed - lastReport).TotalSeconds);
+                    progress?.Report(new UpdateDownloadProgress(
+                        totalBytes is > 0
+                            ? Math.Clamp((double)(start + bytesThisRun) / totalBytes.Value, 0.0, 1.0)
+                            : null,
+                        start + bytesThisRun,
+                        totalBytes,
+                        bytesPerSecond));
+                    lastReport = elapsed;
+                    lastBytes = bytesThisRun;
+                }
+            }
+
+            await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        var received = start + bytesThisRun;
+        progress?.Report(new UpdateDownloadProgress(
+            totalBytes is > 0 ? Math.Clamp((double)received / totalBytes.Value, 0.0, 1.0) : null,
+            received,
+            totalBytes,
+            stopwatch.Elapsed.TotalSeconds > 0 ? bytesThisRun / stopwatch.Elapsed.TotalSeconds : 0));
+    }
+
+    private static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken)
+    {
+        await using var stream = File.OpenRead(path);
+        var hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
     private async Task<string> DownloadChecksumAsync(string url, CancellationToken cancellationToken)

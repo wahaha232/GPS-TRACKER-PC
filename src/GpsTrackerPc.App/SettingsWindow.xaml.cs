@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using GpsTrackerPc.App.Infrastructure;
 using GpsTrackerPc.Core.Appearance;
 using GpsTrackerPc.Core.Security;
@@ -20,14 +21,19 @@ public partial class SettingsWindow : Window
     private readonly ThemeSettingsStore _themeStore;
     private readonly TraySettingsStore _trayStore;
     private readonly StorageSettingsStore _storageStore;
+    private readonly ResumePreferenceStore _resumePreference;
     private readonly Func<Task> _checkUpdates;
+    private readonly Action _openPendingRecords;
+    private readonly Action _rollbackVersion;
     private bool _updatingUi;
 
     public SettingsWindow(
         TokenStore tokenStore,
         DeviceNameStore deviceNameStore,
         UpdateCheckStore updateCheckStore,
-        Func<Task> checkUpdates)
+        Func<Task> checkUpdates,
+        Action openPendingRecords,
+        Action rollbackVersion)
     {
         InitializeComponent();
         _tokenStore = tokenStore;
@@ -36,7 +42,10 @@ public partial class SettingsWindow : Window
         _themeStore = new ThemeSettingsStore(AppPaths.ThemeFile);
         _trayStore = new TraySettingsStore(AppPaths.TraySettingsFile);
         _storageStore = new StorageSettingsStore(AppPaths.StorageSettingsFile);
+        _resumePreference = new ResumePreferenceStore(AppPaths.ResumePreferenceFile);
         _checkUpdates = checkUpdates;
+        _openPendingRecords = openPendingRecords;
+        _rollbackVersion = rollbackVersion;
         RefreshDataPath();
         DeviceNameBox.Text = _deviceNameStore.Load();
         VersionText.Text = $"目前版本：v{AppVersion.Current}";
@@ -47,6 +56,9 @@ public partial class SettingsWindow : Window
         AutoInstallUpdateCheck.IsChecked = updateState.InstallMode == UpdateInstallMode.Automatic;
         AutoInstallUpdateCheck.IsEnabled = updateState.BackgroundDownloadEnabled;
         AutoUploadPendingCheck.IsChecked = updateState.AutoUploadPendingRecords;
+        UpdateChannelBox.SelectedValue = updateState.Channel.ToString();
+        UnmeteredOnlyCheck.IsChecked = updateState.DownloadOnlyOnUnmetered;
+        DailyUploadLimitBox.Text = updateState.AutoUploadDailyLimit.ToString();
         MinimizeToTrayCheck.IsChecked = _trayStore.Load().MinimizeToTray;
         ThemeBox.ItemsSource = ThemeCatalog.Options;
         ThemeBox.SelectedValue = _themeStore.Load();
@@ -79,6 +91,12 @@ public partial class SettingsWindow : Window
                 ? UpdateInstallMode.Automatic
                 : UpdateInstallMode.Manual);
             _updateCheckStore.SetAutoUploadPendingRecords(AutoUploadPendingCheck.IsChecked == true);
+            _updateCheckStore.SetChannel(
+                string.Equals(UpdateChannelBox.SelectedValue?.ToString(), "Beta", StringComparison.Ordinal)
+                    ? UpdateChannel.Beta
+                    : UpdateChannel.Stable);
+            _updateCheckStore.SetDownloadOnlyOnUnmetered(UnmeteredOnlyCheck.IsChecked == true);
+            _updateCheckStore.SetAutoUploadDailyLimit(ParseDailyLimit());
             _trayStore.SetMinimizeToTray(MinimizeToTrayCheck.IsChecked == true);
             DeviceNameStatusText.Text = "已套用設定。";
         }
@@ -223,11 +241,117 @@ public partial class SettingsWindow : Window
 
         try
         {
+            if (AutoUploadPendingCheck.IsChecked == true)
+            {
+                var answer = MessageBox.Show(
+                    this,
+                    "開啟後，本機待上傳的模擬紀錄會在背景自動公開上傳到 GitHub（最多每日上限）。\n\n" +
+                    "確定要開啟嗎？",
+                    "自動補傳隱私提醒",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+                if (answer != MessageBoxResult.Yes)
+                {
+                    _updatingUi = true;
+                    AutoUploadPendingCheck.IsChecked = false;
+                    _updatingUi = false;
+                    _updateCheckStore.SetAutoUploadPendingRecords(false);
+                    return;
+                }
+            }
+
             _updateCheckStore.SetAutoUploadPendingRecords(AutoUploadPendingCheck.IsChecked == true);
         }
         catch (Exception ex)
         {
             ShowUpdateSettingsError(ex);
+        }
+    }
+
+    private void UpdateChannel_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingUi)
+        {
+            return;
+        }
+
+        try
+        {
+            _updateCheckStore.SetChannel(
+                string.Equals(UpdateChannelBox.SelectedValue?.ToString(), "Beta", StringComparison.Ordinal)
+                    ? UpdateChannel.Beta
+                    : UpdateChannel.Stable);
+        }
+        catch (Exception ex)
+        {
+            ShowUpdateSettingsError(ex);
+        }
+    }
+
+    private void UnmeteredOnly_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_updatingUi)
+        {
+            return;
+        }
+
+        try
+        {
+            _updateCheckStore.SetDownloadOnlyOnUnmetered(UnmeteredOnlyCheck.IsChecked == true);
+        }
+        catch (Exception ex)
+        {
+            ShowUpdateSettingsError(ex);
+        }
+    }
+
+    private void DailyUploadLimit_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_updatingUi)
+        {
+            return;
+        }
+
+        try
+        {
+            _updateCheckStore.SetAutoUploadDailyLimit(ParseDailyLimit());
+            DailyUploadLimitBox.Text = ParseDailyLimit().ToString();
+        }
+        catch (Exception ex)
+        {
+            ShowUpdateSettingsError(ex);
+        }
+    }
+
+    private int ParseDailyLimit() =>
+        int.TryParse(DailyUploadLimitBox.Text.Trim(), out var limit)
+            ? Math.Clamp(limit, 1, 200)
+            : 20;
+
+    private void OpenPendingRecords_Click(object sender, RoutedEventArgs e) => _openPendingRecords();
+
+    private void Rollback_Click(object sender, RoutedEventArgs e) => _rollbackVersion();
+
+    private void ResetRestartPrompt_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _resumePreference.Reset();
+            MessageBox.Show(
+                this,
+                "已重設。下次重啟後會再詢問要繼續、存檔或放棄模擬路線。",
+                "重設完成",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                "重設失敗：\n\n" + ex.Message,
+                "重設失敗",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
         }
     }
 

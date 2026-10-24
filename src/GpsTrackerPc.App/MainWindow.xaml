@@ -10,10 +10,12 @@
         MinHeight="600"
         Background="{DynamicResource AppBackground}"
         Loaded="Window_Loaded"
+        Activated="Window_Activated"
         StateChanged="Window_StateChanged"
         Closing="Window_Closing">
   <Grid>
     <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
       <RowDefinition Height="*" />
@@ -52,6 +54,14 @@
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Center">
+          <Button x:Name="PendingRecordsButton"
+                  Content="待上傳 (0)"
+                  Padding="12,5"
+                  Margin="0,0,8,0"
+                  Background="{DynamicResource AppBorder}"
+                  Foreground="{DynamicResource AppText}"
+                  BorderBrush="{DynamicResource AppBorderStrong}"
+                  Click="PendingRecords_Click" />
           <Button x:Name="SyncButton"
                   Content="立即同步"
                   Padding="12,5"
@@ -125,6 +135,15 @@
         <StackPanel Grid.Column="1"
                     Orientation="Horizontal"
                     VerticalAlignment="Center">
+          <Button x:Name="PauseDownloadButton"
+                  Content="暫停下載"
+                  Padding="12,5"
+                  Margin="8,0,0,0"
+                  Background="{DynamicResource AppBorder}"
+                  Foreground="{DynamicResource AppText}"
+                  BorderBrush="{DynamicResource AppBorderStrong}"
+                  Visibility="Collapsed"
+                  Click="PauseDownload_Click" />
           <Button x:Name="InstallUpdateButton"
                   Content="安裝更新"
                   Padding="12,5"
@@ -147,7 +166,21 @@
       </Grid>
     </Border>
 
-    <Grid Grid.Row="2">
+    <Border x:Name="OfflineBanner"
+            Grid.Row="2"
+            Background="{DynamicResource AppSurfaceAlt}"
+            BorderBrush="{DynamicResource AppWarningText}"
+            BorderThickness="0,0,0,1"
+            Padding="14,6"
+            Visibility="Collapsed">
+      <TextBlock x:Name="OfflineBannerText"
+                 Text="網路中斷：模擬與背景補傳已暫停，恢復連線後會自動繼續。"
+                 Foreground="{DynamicResource AppWarningText}"
+                 FontSize="12"
+                 TextWrapping="Wrap" />
+    </Border>
+
+    <Grid Grid.Row="3">
       <wv2:WebView2 x:Name="Browser" />
 
       <Border x:Name="LoadingPanel" Background="{DynamicResource AppBackground}">

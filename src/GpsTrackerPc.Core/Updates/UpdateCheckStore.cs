@@ -13,12 +13,21 @@ public enum UpdateInstallMode
     Automatic,
 }
 
+public enum UpdateChannel
+{
+    Stable,
+    Beta,
+}
+
 public sealed record UpdateCheckState(
     bool AutoCheckEnabled,
     long? LastCheckMs,
     bool BackgroundDownloadEnabled = true,
     UpdateInstallMode InstallMode = UpdateInstallMode.Manual,
-    bool AutoUploadPendingRecords = true);
+    bool AutoUploadPendingRecords = true,
+    UpdateChannel Channel = UpdateChannel.Stable,
+    bool DownloadOnlyOnUnmetered = true,
+    int AutoUploadDailyLimit = 20);
 
 /// <summary>記錄自動檢查更新、背景下載、安裝方式與上次檢查時間；啟動時一天最多檢查一次。</summary>
 public sealed class UpdateCheckStore
@@ -56,7 +65,10 @@ public sealed class UpdateCheckStore
                 stored?.LastCheckMs,
                 stored?.BackgroundDownloadEnabled ?? true,
                 stored?.InstallMode ?? UpdateInstallMode.Manual,
-                stored?.AutoUploadPendingRecords ?? true);
+                stored?.AutoUploadPendingRecords ?? true,
+                stored?.Channel ?? UpdateChannel.Stable,
+                stored?.DownloadOnlyOnUnmetered ?? true,
+                Math.Clamp(stored?.AutoUploadDailyLimit ?? 20, 1, 200));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -94,6 +106,14 @@ public sealed class UpdateCheckStore
     public void SetAutoUploadPendingRecords(bool enabled) =>
         Save(Load() with { AutoUploadPendingRecords = enabled });
 
+    public void SetChannel(UpdateChannel channel) => Save(Load() with { Channel = channel });
+
+    public void SetDownloadOnlyOnUnmetered(bool enabled) =>
+        Save(Load() with { DownloadOnlyOnUnmetered = enabled });
+
+    public void SetAutoUploadDailyLimit(int limit) =>
+        Save(Load() with { AutoUploadDailyLimit = Math.Clamp(limit, 1, 200) });
+
     public void Save(UpdateCheckState state)
     {
         var json = JsonSerializer.Serialize(
@@ -104,6 +124,9 @@ public sealed class UpdateCheckStore
                 BackgroundDownloadEnabled = state.BackgroundDownloadEnabled,
                 InstallMode = state.InstallMode,
                 AutoUploadPendingRecords = state.AutoUploadPendingRecords,
+                Channel = state.Channel,
+                DownloadOnlyOnUnmetered = state.DownloadOnlyOnUnmetered,
+                AutoUploadDailyLimit = state.AutoUploadDailyLimit,
             },
             SerializerOptions);
         AtomicFile.WriteAllBytes(_filePath, Encoding.UTF8.GetBytes(json));
@@ -120,5 +143,11 @@ public sealed class UpdateCheckStore
         public UpdateInstallMode? InstallMode { get; set; }
 
         public bool? AutoUploadPendingRecords { get; set; }
+
+        public UpdateChannel? Channel { get; set; }
+
+        public bool? DownloadOnlyOnUnmetered { get; set; }
+
+        public int? AutoUploadDailyLimit { get; set; }
     }
 }

@@ -11,6 +11,7 @@ using GpsTrackerPc.Core.Security;
 using GpsTrackerPc.Core.Settings;
 using GpsTrackerPc.Core.Simulator;
 using GpsTrackerPc.Core.Updates;
+using GpsTrackerPc.Simulation.Routes;
 using Microsoft.Web.WebView2.Core;
 
 namespace GpsTrackerPc.App;
@@ -63,7 +64,10 @@ public partial class MainWindow : Window
     private readonly UpdateService _updateService;
     private readonly UpdateCheckStore _updateCheckStore;
     private readonly SimulationResumeStore _resumeStore;
+    private readonly ResumePreferenceStore _resumePreference;
     private readonly PendingRecordStore _pendingRecords;
+    private readonly UploadQuotaStore _uploadQuota;
+    private readonly RouteLibraryStore _routeLibrary;
     private readonly DispatcherTimer _pendingUploadTimer;
     private readonly DispatcherTimer _networkTimer;
     private readonly TraySettingsStore _traySettingsStore;
@@ -83,11 +87,16 @@ public partial class MainWindow : Window
     private bool _isOnline;
     private bool _pendingUploadRunning;
     private bool _backgroundUpdateRunning;
+    private bool _backgroundDownloadPaused;
     private bool _restartPending;
     private bool _restartPromptShown;
+    private int _backgroundDownloadAttempt;
     private UpdateInfo? _downloadedUpdate;
+    private UpdateInfo? _backgroundUpdateInfo;
     private string? _downloadedUpdatePath;
     private string? _installedUpdateVersion;
+    private CancellationTokenSource? _backgroundDownloadCts;
+    private DispatcherTimer? _downloadRetryTimer;
     private SimulatorView? _simulatorView;
     private FriendsView? _friendsView;
 
@@ -113,7 +122,10 @@ public partial class MainWindow : Window
         _updateService = new UpdateService(_updateClient, tokenProvider: () => _tokenStore.Load());
         _updateCheckStore = new UpdateCheckStore(AppPaths.UpdateCheckFile);
         _resumeStore = new SimulationResumeStore(AppPaths.RestartSessionFile);
+        _resumePreference = new ResumePreferenceStore(AppPaths.ResumePreferenceFile);
         _pendingRecords = new PendingRecordStore(AppPaths.PendingRecordsDirectory);
+        _uploadQuota = new UploadQuotaStore(AppPaths.UploadQuotaFile);
+        _routeLibrary = new RouteLibraryStore(AppPaths.RoutesDirectory);
         _pendingUploadTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(5) };
         _pendingUploadTimer.Tick += async (_, _) => await TryUploadPendingRecordsAsync();
         _networkTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
@@ -145,6 +157,8 @@ public partial class MainWindow : Window
         Width = Math.Min(Width, Math.Max(MinWidth, workArea.Width - 32));
         Height = Math.Min(Height, Math.Max(MinHeight, workArea.Height - 32));
     }
+
+    private void Window_Activated(object? sender, EventArgs e) => RefreshPendingButton();
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
@@ -228,6 +242,12 @@ public partial class MainWindow : Window
             _networkTimer.Start();
             _ = HandleRestartPromptAsync();
             _ = TryUploadPendingRecordsAsync();
+            RefreshPendingButton();
+            if (!_isOnline)
+            {
+                OfflineBanner.Visibility = Visibility.Visible;
+                SyncStatusText.Text = "網路中斷：背景補傳與紀錄同步已暫停，恢復連線後會自動繼續。";
+            }
         }
         catch (Exception ex)
         {
@@ -453,6 +473,9 @@ public partial class MainWindow : Window
         {
             UpdateInstaller.CleanupOldVersion(executable);
         }
+
+        // 新版本已成功載入頁面，背景下載的暫存檔可以清掉；.old 會保留 7 天供回復。
+        UpdateInstaller.CleanupDownloads(AppPaths.UpdateDownloadDirectory, AppVersion.Current);
     }
 
     private void ShowError(string message)
@@ -617,7 +640,9 @@ public partial class MainWindow : Window
             {
                 ShowUpdateWindow(initialUpdate: null);
                 return Task.CompletedTask;
-            })
+            },
+            OpenPendingRecords,
+            RollbackToPreviousVersion)
         {
             Owner = this,
         };
@@ -638,6 +663,7 @@ public partial class MainWindow : Window
             _updateCheckStore,
             AppVersion.Current,
             initialUpdate,
+            _updateCheckStore.Load().Channel,
             RestartForUpdate)
         {
             Owner = this,
@@ -662,7 +688,8 @@ public partial class MainWindow : Window
         UpdateInfo? update = null;
         try
         {
-            update = await _updateService.CheckAsync(AppVersion.Current, _lifetime.Token);
+            var startupSettings = _updateCheckStore.Load();
+            update = await _updateService.CheckAsync(AppVersion.Current, startupSettings.Channel, _lifetime.Token);
         }
         catch (OperationCanceledException)
         {
@@ -713,11 +740,16 @@ public partial class MainWindow : Window
     }
 
     /// <summary>背景下載到本機 updates 資料夾；依設定直接安裝或等使用者按「安裝更新」。</summary>
-    private async Task DownloadBackgroundUpdateAsync(UpdateInfo update)
+    private async Task DownloadBackgroundUpdateAsync(UpdateInfo update, bool isRetry = false)
     {
         if (_backgroundUpdateRunning || _installedUpdateVersion != null)
         {
             return;
+        }
+
+        if (!isRetry)
+        {
+            _backgroundDownloadAttempt = 0;
         }
 
         if (!string.Equals(Path.GetExtension(update.AssetName), ".exe", StringComparison.OrdinalIgnoreCase))
@@ -729,27 +761,73 @@ public partial class MainWindow : Window
             return;
         }
 
-        _backgroundUpdateRunning = true;
+        var settings = _updateCheckStore.Load();
+        if (settings.DownloadOnlyOnUnmetered && NetworkCostHeuristic.IsLikelyMetered())
+        {
+            ShowUpdateBanner(
+                "目前是行動網路（可能計量），已依設定暫停背景下載；可改用「檢查雲端更新」手動下載。",
+                showInstall: false,
+                showRestart: false);
+            return;
+        }
+
         var destination = Path.Combine(
             AppPaths.UpdateDownloadDirectory,
             SafeVersionFolder(update.Version),
             "GpsTrackerPc.exe");
+        var requiredBytes = update.Size > 0
+            ? (long)(update.Size * 1.2) + 10 * 1024 * 1024
+            : 250L * 1024 * 1024;
+        if (!UpdateInstallChecks.HasFreeSpace(
+                Path.GetDirectoryName(destination) ?? AppPaths.Root,
+                requiredBytes,
+                out var availableBytes))
+        {
+            ShowUpdateBanner(
+                $"磁碟空間不足：需要約 {FormatBytes(requiredBytes)}，可用 {FormatBytes(availableBytes)}。",
+                showInstall: false,
+                showRestart: false);
+            return;
+        }
+
+        _backgroundUpdateRunning = true;
+        _backgroundUpdateInfo = update;
+        _backgroundDownloadPaused = false;
+        _backgroundDownloadCts?.Dispose();
+        _backgroundDownloadCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         try
         {
             if (!File.Exists(destination))
             {
-                ShowUpdateBanner($"正在背景下載更新 v{update.Version}… 0%", false, false);
-                var progress = new Progress<double?>(value =>
+                ShowUpdateBanner($"正在背景下載更新 v{update.Version}… 0%", false, false, showPause: true);
+                var downloadFinished = false;
+                var progress = new Progress<UpdateDownloadProgress>(value =>
                 {
-                    if (value.HasValue)
+                    if (downloadFinished || _closing || _backgroundDownloadPaused)
                     {
-                        ShowUpdateBanner(
-                            $"正在背景下載更新 v{update.Version}… {value.Value:P0}",
-                            showInstall: false,
-                            showRestart: false);
+                        return;
                     }
+
+                    ShowUpdateBanner(
+                        $"正在背景下載更新 v{update.Version}… " +
+                        (value.Fraction is { } fraction ? fraction.ToString("P0") : $"{FormatBytes(value.BytesReceived)}") +
+                        $"・{FormatBytes(value.BytesPerSecond)}/s",
+                        showInstall: false,
+                        showRestart: false,
+                        showPause: true);
                 });
-                await _updateService.DownloadAsync(update, destination, progress, _lifetime.Token);
+                try
+                {
+                    await _updateService.DownloadWithResumeAsync(
+                        update,
+                        destination,
+                        progress,
+                        _backgroundDownloadCts.Token);
+                }
+                finally
+                {
+                    downloadFinished = true;
+                }
             }
 
             if (_closing)
@@ -757,6 +835,8 @@ public partial class MainWindow : Window
                 return;
             }
 
+            _backgroundDownloadAttempt = 0;
+            _downloadRetryTimer?.Stop();
             _downloadedUpdate = update;
             _downloadedUpdatePath = destination;
             if (_updateCheckStore.Load().InstallMode == UpdateInstallMode.Automatic)
@@ -769,22 +849,106 @@ public partial class MainWindow : Window
                     $"更新 v{update.Version} 已下載（目前 v{AppVersion.Current}）。",
                     showInstall: true,
                     showRestart: false);
+                NotifyTray($"更新 v{update.Version} 已下載，可在工具列按「安裝更新」。");
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (!_lifetime.IsCancellationRequested)
         {
-            // 程式關閉或取消下載，不用提示。
+            _backgroundDownloadPaused = true;
+            var partPath = destination + ".part";
+            var downloaded = File.Exists(partPath) ? new FileInfo(partPath).Length : 0;
+            ShowUpdateBanner(
+                $"已暫停下載更新 v{update.Version}（已下載 {FormatBytes(downloaded)}，可繼續）。",
+                showInstall: false,
+                showRestart: false,
+                showPause: true);
         }
         catch (Exception ex)
         {
             if (!_closing)
             {
-                ShowUpdateBanner($"背景下載更新失敗：{ex.Message}", false, false);
+                ScheduleDownloadRetry(update, ex.Message);
             }
         }
         finally
         {
             _backgroundUpdateRunning = false;
+        }
+    }
+
+    private void PauseDownload_Click(object sender, RoutedEventArgs e)
+    {
+        if (_backgroundDownloadPaused && _backgroundUpdateInfo != null)
+        {
+            _backgroundDownloadPaused = false;
+            _ = DownloadBackgroundUpdateAsync(_backgroundUpdateInfo, isRetry: true);
+            return;
+        }
+
+        if (_backgroundUpdateRunning)
+        {
+            _backgroundDownloadPaused = true;
+            _backgroundDownloadCts?.Cancel();
+            PauseDownloadButton.Content = "繼續下載";
+        }
+    }
+
+    private void ScheduleDownloadRetry(UpdateInfo update, string error)
+    {
+        _backgroundDownloadAttempt++;
+        if (_backgroundDownloadAttempt > 3)
+        {
+            ShowUpdateBanner(
+                $"背景下載更新失敗：{error}\n已停止自動重試，可用「檢查雲端更新」手動下載。",
+                showInstall: false,
+                showRestart: false);
+            NotifyTray("背景下載更新失敗，已停止自動重試。");
+            return;
+        }
+
+        var delay = _backgroundDownloadAttempt switch
+        {
+            1 => TimeSpan.FromSeconds(30),
+            2 => TimeSpan.FromMinutes(2),
+            _ => TimeSpan.FromMinutes(10),
+        };
+        ShowUpdateBanner(
+            $"背景下載更新失敗：{error}\n{delay.TotalMinutes:0.#} 分鐘後自動重試（第 {_backgroundDownloadAttempt}/3 次）。",
+            showInstall: false,
+            showRestart: false);
+        _downloadRetryTimer?.Stop();
+        _downloadRetryTimer = new DispatcherTimer { Interval = delay };
+        _downloadRetryTimer.Tick += (_, _) =>
+        {
+            _downloadRetryTimer?.Stop();
+            if (!_closing)
+            {
+                _ = DownloadBackgroundUpdateAsync(update, isRetry: true);
+            }
+        };
+        _downloadRetryTimer.Start();
+    }
+
+    private static string FormatBytes(double bytes)
+    {
+        if (bytes >= 1024 * 1024)
+        {
+            return $"{bytes / (1024 * 1024):0.0} MB";
+        }
+
+        if (bytes >= 1024)
+        {
+            return $"{bytes / 1024:0.0} KB";
+        }
+
+        return $"{bytes:0} B";
+    }
+
+    private void NotifyTray(string message)
+    {
+        if (_trayIcon.Visible)
+        {
+            _trayIcon.ShowBalloon(message);
         }
     }
 
@@ -804,11 +968,40 @@ public partial class MainWindow : Window
             return;
         }
 
+        var signature = UpdateSignature.Inspect(path);
+        if (signature.Status == UpdateSignatureStatus.Invalid)
+        {
+            ShowUpdateBanner(
+                "更新檔數位簽章不合法，已停止安裝：" + (signature.Error ?? "簽章驗證失敗"),
+                showInstall: false,
+                showRestart: false);
+            return;
+        }
+
+        var executable = Environment.ProcessPath
+            ?? Path.Combine(AppContext.BaseDirectory, "GpsTrackerPc.exe");
+        var requiredBytes = new FileInfo(path).Length * 2 + 50L * 1024 * 1024;
+        if (!UpdateInstallChecks.HasFreeSpace(
+                Path.GetDirectoryName(executable) ?? AppContext.BaseDirectory,
+                requiredBytes,
+                out var availableBytes))
+        {
+            ShowUpdateBanner(
+                $"安裝空間不足：需要約 {FormatBytes(requiredBytes)}，可用 {FormatBytes(availableBytes)}。",
+                showInstall: false,
+                showRestart: false);
+            return;
+        }
+
         if (confirm)
         {
+            var unsignedNote = signature.Status == UpdateSignatureStatus.Unsigned
+                ? "\n\n注意：此更新檔沒有數位簽章，僅以 SHA-256 檢查碼驗證。"
+                : $"\n\n簽章：{signature.Subject}";
             var answer = MessageBox.Show(
                 this,
-                $"要安裝 v{update.Version} 嗎？\n\n安裝後模擬會在重啟時暫停，重啟後再選擇是否繼續。",
+                $"要安裝 v{update.Version} 嗎？\n\n安裝後模擬會在重啟時暫停，重啟後再選擇是否繼續。" +
+                unsignedNote,
                 "安裝更新",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question);
@@ -818,8 +1011,6 @@ public partial class MainWindow : Window
             }
         }
 
-        var executable = Environment.ProcessPath
-            ?? Path.Combine(AppContext.BaseDirectory, "GpsTrackerPc.exe");
         var apply = UpdateInstaller.Apply(path, executable, restart: () => { });
         if (!apply.Success)
         {
@@ -830,17 +1021,24 @@ public partial class MainWindow : Window
         _installedUpdateVersion = update.Version;
         _downloadedUpdate = null;
         _downloadedUpdatePath = null;
+        _backgroundUpdateInfo = null;
+        _backgroundDownloadPaused = false;
         ShowUpdateBanner(
-            $"更新 v{update.Version} 已安裝。請重啟程式以套用新版本。",
+            $"更新 v{update.Version} 已安裝。請重啟程式以套用新版本。" +
+            (signature.Status == UpdateSignatureStatus.Unsigned ? "（未簽章，已用 SHA-256 驗證）" : string.Empty),
             showInstall: false,
             showRestart: true);
+        NotifyTray($"更新 v{update.Version} 已安裝，請重啟程式。");
 
         if (!confirm)
         {
             MessageBox.Show(
                 this,
                 $"更新 v{update.Version} 已安裝，重啟程式後才會生效。\n\n" +
-                "重啟前會先暫停目前的模擬路線，下次啟動可以選擇繼續或存檔。",
+                "重啟前會先暫停目前的模擬路線，下次啟動可以選擇繼續或存檔。" +
+                (signature.Status == UpdateSignatureStatus.Unsigned
+                    ? "\n\n此版本沒有數位簽章，已用 SHA-256 檢查碼驗證。"
+                    : string.Empty),
                 "已安裝更新",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
@@ -880,7 +1078,11 @@ public partial class MainWindow : Window
         {
             var executable = Environment.ProcessPath
                 ?? Path.Combine(AppContext.BaseDirectory, "GpsTrackerPc.exe");
-            Process.Start(new ProcessStartInfo(executable) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(executable)
+            {
+                UseShellExecute = true,
+                Arguments = "--restarted-for-update",
+            });
         }
         catch (Exception ex)
         {
@@ -889,6 +1091,79 @@ public partial class MainWindow : Window
                 this,
                 "無法重新啟動程式，請手動關閉後再開啟：\n\n" + ex.Message,
                 "重啟失敗",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        _closing = true;
+        _simulatorView?.Shutdown();
+        _friendsView?.Shutdown();
+        Application.Current.Shutdown();
+    }
+
+    /// <summary>設定畫面的「回復上一個版本」：換回 .old 後重啟。</summary>
+    private void RollbackToPreviousVersion()
+    {
+        var executable = Environment.ProcessPath
+            ?? Path.Combine(AppContext.BaseDirectory, "GpsTrackerPc.exe");
+        if (!File.Exists(executable + ".old"))
+        {
+            MessageBox.Show(
+                this,
+                "找不到上一個版本。已經成功啟動過新版本一段時間，舊版備份可能已被清理。",
+                "無法回復",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var answer = MessageBox.Show(
+            this,
+            "要換回上一個版本並重新啟動嗎？\n\n目前的模擬路線會先暫停並暫存。",
+            "回復上一個版本",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var snapshot = _simulatorView?.PrepareForRestart();
+        if (snapshot != null)
+        {
+            try
+            {
+                _resumeStore.Save(snapshot);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                MessageBox.Show(
+                    this,
+                    "無法暫存模擬路線，已取消回復：\n\n" + ex.Message,
+                    "回復失敗",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+        }
+
+        _restartPending = true;
+        var result = UpdateInstaller.Rollback(executable, () =>
+        {
+            Process.Start(new ProcessStartInfo(executable)
+            {
+                UseShellExecute = true,
+                Arguments = "--restarted-for-update",
+            });
+        });
+        if (!result.Success)
+        {
+            _restartPending = false;
+            MessageBox.Show(
+                this,
+                "無法回復上一個版本：\n\n" + result.ErrorMessage,
+                "回復失敗",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
             return;
@@ -921,8 +1196,36 @@ public partial class MainWindow : Window
             return;
         }
 
-        var choice = ResumeSimulationWindow.ShowChoice(this, snapshot);
-        switch (choice)
+        var preference = _resumePreference.Load();
+        var choice = preference == RestartPromptChoice.AlwaysAsk
+            ? ResumeSimulationWindow.ShowChoice(this, snapshot)
+            : new ResumePromptResult(
+                preference switch
+                {
+                    RestartPromptChoice.Continue => ResumeSimulationChoice.Continue,
+                    RestartPromptChoice.SaveAndEnd => ResumeSimulationChoice.SaveAndEnd,
+                    _ => ResumeSimulationChoice.Discard,
+                },
+                Remember: false);
+
+        if (choice.Remember)
+        {
+            try
+            {
+                _resumePreference.Save(choice.Choice switch
+                {
+                    ResumeSimulationChoice.Continue => RestartPromptChoice.Continue,
+                    ResumeSimulationChoice.SaveAndEnd => RestartPromptChoice.SaveAndEnd,
+                    _ => RestartPromptChoice.Discard,
+                });
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // 記不住選擇不影響本次處理。
+            }
+        }
+
+        switch (choice.Choice)
         {
             case ResumeSimulationChoice.Continue:
                 try
@@ -946,12 +1249,44 @@ public partial class MainWindow : Window
 
                 break;
             case ResumeSimulationChoice.SaveAndEnd:
-                SaveSnapshotAsPendingRecord(snapshot);
+                SaveRestartSnapshot(snapshot);
                 _resumeStore.Clear();
                 break;
             default:
                 _resumeStore.Clear();
                 break;
+        }
+    }
+
+    /// <summary>有取樣點就存成待上傳紀錄；只有路線草稿就存到本機路線庫。</summary>
+    private void SaveRestartSnapshot(SimulationResumeSnapshot snapshot)
+    {
+        if (snapshot.Samples.Count < 2)
+        {
+            TrySaveDraftRoute(snapshot);
+            return;
+        }
+
+        SaveSnapshotAsPendingRecord(snapshot);
+    }
+
+    private void TrySaveDraftRoute(SimulationResumeSnapshot snapshot)
+    {
+        try
+        {
+            var route = RouteJsonCodec.Decode(snapshot.RouteJson);
+            if (route == null)
+            {
+                ShowUpdateBanner("路線草稿格式不正確，無法存檔。", false, false);
+                return;
+            }
+
+            _routeLibrary.Save(route);
+            SyncStatusText.Text = $"路線草稿「{route.Name}」已存到本機路線庫。";
+        }
+        catch (Exception ex)
+        {
+            ShowUpdateBanner("路線草稿存檔失敗：" + ex.Message, false, false);
         }
     }
 
@@ -972,6 +1307,7 @@ public partial class MainWindow : Window
 
             _pendingRecords.Save(build);
             SyncStatusText.Text = "模擬路線已存到本機待上傳清單，稍後會自動上傳。";
+            RefreshPendingButton();
             _ = TryUploadPendingRecordsAsync();
         }
         catch (Exception ex)
@@ -983,64 +1319,106 @@ public partial class MainWindow : Window
     /// <summary>定期比對並補傳本機待上傳的模擬紀錄；離線或沒有 Token 時略過。</summary>
     private async Task TryUploadPendingRecordsAsync()
     {
-        if (_pendingUploadRunning || _closing || !_isOnline ||
-            !_tokenStore.HasToken || !_updateCheckStore.Load().AutoUploadPendingRecords)
+        if (_pendingUploadRunning || _closing || !_isOnline || !_tokenStore.HasToken)
         {
+            RefreshPendingButton();
+            return;
+        }
+
+        var settings = _updateCheckStore.Load();
+        if (!settings.AutoUploadPendingRecords)
+        {
+            RefreshPendingButton();
+            return;
+        }
+
+        var pending = _pendingRecords.LoadAll();
+        if (pending.Count == 0)
+        {
+            RefreshPendingButton();
+            return;
+        }
+
+        var remaining = _uploadQuota.Remaining(settings.AutoUploadDailyLimit, DateTimeOffset.Now);
+        if (remaining <= 0)
+        {
+            SyncStatusText.Text =
+                $"今日自動補傳已達上限（{settings.AutoUploadDailyLimit} 筆），可在「待上傳」手動補傳。";
+            RefreshPendingButton();
             return;
         }
 
         _pendingUploadRunning = true;
         try
         {
-            var pending = _pendingRecords.LoadAll();
-            if (pending.Count == 0)
+            var uploader = new PendingRecordUploader(
+                _pendingRecords,
+                new GitHubRecordUploader(_httpClient, _tokenStore));
+            var report = await uploader.UploadAllAsync(remaining, _lifetime.Token);
+            if (report.Uploaded > 0)
             {
-                return;
+                _uploadQuota.Consume(report.Uploaded, DateTimeOffset.Now);
             }
 
-            var uploader = new GitHubRecordUploader(_httpClient, _tokenStore);
-            var uploaded = 0;
-            foreach (var record in pending)
+            if (report.Failed > 0 && !_closing)
             {
-                if (_closing || !_isOnline)
-                {
-                    break;
-                }
-
-                var result = await uploader.UploadAsync(
-                    new GpxBuildResult(record.Track, record.Entry, null, null),
-                    _lifetime.Token);
-                if (result.Status is UploadStatus.Uploaded or UploadStatus.Duplicate)
-                {
-                    _pendingRecords.Remove(record.Entry.TrackId);
-                    if (result.Status == UploadStatus.Uploaded)
-                    {
-                        uploaded++;
-                    }
-                }
-                else
-                {
-                    break; // Token／網路問題：保留檔案，下一輪再試。
-                }
+                SyncStatusText.Text = "自動補傳失敗：" + (report.LastError ?? "未知錯誤") +
+                    "。可在「待上傳」查看並手動重試。";
+                NotifyTray("自動補傳失敗，待上傳紀錄已保留。");
             }
-
-            if (!_closing && uploaded > 0)
+            else if (report.Removed > 0 && !_closing)
             {
-                SyncStatusText.Text = $"已自動補傳 {uploaded} 筆模擬紀錄。";
+                SyncStatusText.Text = $"已自動補傳 {report.Removed} 筆模擬紀錄。";
             }
         }
         catch (OperationCanceledException)
         {
             // 關閉程式時取消。
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // 自動補傳失敗不跳錯誤視窗，保留檔案等下一輪。
+            if (!_closing)
+            {
+                SyncStatusText.Text = "自動補傳失敗：" + ex.Message + "。可在「待上傳」手動重試。";
+                NotifyTray("自動補傳失敗，待上傳紀錄已保留。");
+            }
         }
         finally
         {
             _pendingUploadRunning = false;
+            RefreshPendingButton();
         }
+    }
+
+    private void RefreshPendingButton()
+    {
+        try
+        {
+            var count = _pendingRecords.LoadAll().Count;
+            PendingRecordsButton.Content = $"待上傳 ({count})";
+            PendingRecordsButton.Foreground = count > 0
+                ? (System.Windows.Media.Brush)FindResource("AppWarningText")
+                : (System.Windows.Media.Brush)FindResource("AppText");
+        }
+        catch (Exception)
+        {
+            // 讀取失敗不影響程式。
+        }
+    }
+
+    private void PendingRecords_Click(object sender, RoutedEventArgs e) => OpenPendingRecords();
+
+    private void OpenPendingRecords()
+    {
+        var window = new PendingRecordsWindow(
+            _pendingRecords,
+            new GitHubRecordUploader(_httpClient, _tokenStore),
+            RefreshPendingButton)
+        {
+            Owner = this,
+        };
+        window.ShowDialog();
+        RefreshPendingButton();
     }
 
     private void NetworkAvailability_Changed(object? sender, NetworkAvailabilityEventArgs e)
@@ -1057,26 +1435,42 @@ public partial class MainWindow : Window
         }
 
         _isOnline = online;
+        OfflineBanner.Visibility = online ? Visibility.Collapsed : Visibility.Visible;
         if (online)
         {
             SyncStatusText.Text = "網路已恢復，正在繼續模擬並補傳紀錄…";
             _simulatorView?.ResumeAfterNetworkOutage();
+            if (_downloadRetryTimer != null)
+            {
+                _downloadRetryTimer.Stop();
+                _downloadRetryTimer = null;
+                if (_backgroundUpdateInfo != null && !_backgroundDownloadPaused)
+                {
+                    _ = DownloadBackgroundUpdateAsync(_backgroundUpdateInfo, isRetry: true);
+                }
+            }
+
             _ = TryUploadPendingRecordsAsync();
             _ = RunSyncAsync(automatic: true);
         }
         else
         {
             SyncStatusText.Text = "網路中斷：模擬已暫停，待上傳紀錄會保留。";
+            OfflineBannerText.Text = _simulatorView != null
+                ? "網路中斷：模擬與背景補傳已暫停，恢復連線後會自動繼續。"
+                : "網路中斷：背景補傳與紀錄同步已暫停，恢復連線後會自動繼續。";
             _simulatorView?.PauseForNetworkOutage();
         }
     }
 
-    private void ShowUpdateBanner(string text, bool showInstall, bool showRestart)
+    private void ShowUpdateBanner(string text, bool showInstall, bool showRestart, bool showPause = false)
     {
         UpdateBanner.Visibility = Visibility.Visible;
         UpdateBannerText.Text = text;
         InstallUpdateButton.Visibility = showInstall ? Visibility.Visible : Visibility.Collapsed;
         RestartUpdateButton.Visibility = showRestart ? Visibility.Visible : Visibility.Collapsed;
+        PauseDownloadButton.Visibility = showPause ? Visibility.Visible : Visibility.Collapsed;
+        PauseDownloadButton.Content = _backgroundDownloadPaused ? "繼續下載" : "暫停下載";
     }
 
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
@@ -1106,6 +1500,8 @@ public partial class MainWindow : Window
         _closing = true;
         _pendingUploadTimer.Stop();
         _networkTimer.Stop();
+        _downloadRetryTimer?.Stop();
+        _backgroundDownloadCts?.Cancel();
         NetworkChange.NetworkAvailabilityChanged -= NetworkAvailability_Changed;
         _simulatorView?.Shutdown();
         _friendsView?.Shutdown();

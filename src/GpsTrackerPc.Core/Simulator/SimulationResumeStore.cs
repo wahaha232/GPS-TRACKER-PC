@@ -16,7 +16,10 @@ public sealed record SimulationResumeSnapshot(
     double SpeedMultiplier,
     bool WasPlaying,
     IReadOnlyList<PlaybackSample> Samples,
-    long SavedAtMs);
+    long SavedAtMs,
+    string? RouteName = null,
+    string? SelectedWaypointId = null,
+    bool HasUnsavedRouteChanges = false);
 
 /// <summary>把重啟前的模擬狀態存在 %LOCALAPPDATA%\GpsTrackerPc\restart-session.json。</summary>
 public sealed class SimulationResumeStore
@@ -49,7 +52,7 @@ public sealed class SimulationResumeStore
             var snapshot = JsonSerializer.Deserialize<SimulationResumeSnapshot>(
                 File.ReadAllText(_filePath),
                 SerializerOptions);
-            return snapshot?.Samples is { Count: >= 2 } && !string.IsNullOrWhiteSpace(snapshot.RouteJson)
+            return snapshot?.Samples != null && !string.IsNullOrWhiteSpace(snapshot.RouteJson)
                 ? snapshot
                 : null;
         }

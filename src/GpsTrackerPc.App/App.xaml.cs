@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Windows;
@@ -10,7 +11,9 @@ namespace GpsTrackerPc.App;
 
 public partial class App : Application
 {
+    private const string SingleInstanceMutexName = @"Local\GpsTrackerPc-SingleInstance";
     private bool _crashReported;
+    private Mutex? _singleInstanceMutex;
 
     /// <summary>設定的本機資料夾無法使用時，這裡會有提示文字，主視窗載入後顯示。</summary>
     public static string? StartupDataDirectoryWarning { get; private set; }
@@ -21,6 +24,12 @@ public partial class App : Application
         DispatcherUnhandledException += App_DispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
         TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+
+        if (!AcquireSingleInstance(e.Args))
+        {
+            Shutdown();
+            return;
+        }
 
         ThemeManager.Apply(new ThemeSettingsStore(AppPaths.ThemeFile).Load());
 
@@ -40,6 +49,62 @@ public partial class App : Application
         // 由主視窗在網頁載入完成後呼叫 UpdateInstaller.CleanupOldVersion。
 
         base.OnStartup(e);
+    }
+
+    /// <summary>
+    /// 只允許一個實例。更新／回復重啟時新舊行程會短暫重疊，帶 --restarted-for-update
+    /// 的新行程會等舊行程結束再接手。
+    /// </summary>
+    private bool AcquireSingleInstance(string[] args)
+    {
+        _singleInstanceMutex = new Mutex(
+            initiallyOwned: true,
+            SingleInstanceMutexName,
+            out var created);
+        if (created)
+        {
+            return true;
+        }
+
+        var restartedForUpdate = args.Any(argument =>
+            string.Equals(argument, "--restarted-for-update", StringComparison.OrdinalIgnoreCase));
+        if (restartedForUpdate)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            while (stopwatch.Elapsed < TimeSpan.FromSeconds(20))
+            {
+                Thread.Sleep(250);
+                if (_singleInstanceMutex.WaitOne(0))
+                {
+                    return true;
+                }
+            }
+        }
+
+        _singleInstanceMutex.Dispose();
+        _singleInstanceMutex = null;
+        MessageBox.Show(
+            "GPS Tracker PC 已經在執行中，請使用已開啟的視窗。",
+            "程式已在執行",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+        return false;
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        try
+        {
+            _singleInstanceMutex?.ReleaseMutex();
+        }
+        catch (ApplicationException)
+        {
+            // 不是目前執行緒持有時忽略。
+        }
+
+        _singleInstanceMutex?.Dispose();
+        _singleInstanceMutex = null;
+        base.OnExit(e);
     }
 
     private void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

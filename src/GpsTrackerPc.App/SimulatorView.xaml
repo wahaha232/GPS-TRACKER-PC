@@ -290,6 +290,11 @@
                      Foreground="{DynamicResource AppDangerText}"
                      FontSize="12"
                      Margin="0,6,0,0" />
+          <TextBlock x:Name="NetworkOutageText"
+                     Foreground="{DynamicResource AppWarningText}"
+                     FontSize="12"
+                     TextWrapping="Wrap"
+                     Margin="0,4,0,0" />
           <TextBlock x:Name="PlaybackMetaText"
                      Foreground="{DynamicResource AppTextMuted}"
                      FontSize="12"

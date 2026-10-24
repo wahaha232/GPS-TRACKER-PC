@@ -67,20 +67,134 @@ public static class UpdateInstaller
         return new UpdateApplyResult(true, null);
     }
 
-    /// <summary>下次啟動時刪掉上次留下的 .old；刪不掉就算了。</summary>
+    /// <summary>保留上一個版本 7 天供回復；超過時間才刪掉。</summary>
     public static void CleanupOldVersion(string currentExePath)
     {
         try
         {
             var backupPath = currentExePath + ".old";
-            if (File.Exists(backupPath))
+            if (File.Exists(backupPath) &&
+                DateTime.UtcNow - File.GetLastWriteTimeUtc(backupPath) > TimeSpan.FromDays(7))
             {
                 File.Delete(backupPath);
+            }
+
+            // 回復版本時被換下來的檔案；下次啟動已不在使用中，可以刪。
+            var failedPath = currentExePath + ".failed";
+            if (File.Exists(failedPath))
+            {
+                File.Delete(failedPath);
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // 舊檔清不掉不影響本次啟動。
+        }
+    }
+
+    /// <summary>把上一個版本（.old）換回來，並要求呼叫端重啟。</summary>
+    public static UpdateApplyResult Rollback(string currentExePath, Action restart)
+    {
+        var backupPath = currentExePath + ".old";
+        if (!File.Exists(backupPath))
+        {
+            return new UpdateApplyResult(false, "找不到上一個版本（.old）");
+        }
+
+        var failedPath = currentExePath + ".failed";
+        try
+        {
+            if (File.Exists(failedPath))
+            {
+                File.Delete(failedPath);
+            }
+
+            File.Move(currentExePath, failedPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new UpdateApplyResult(false, "無法暫存目前版本：" + ex.Message);
+        }
+
+        try
+        {
+            File.Copy(backupPath, currentExePath, overwrite: false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Restore(failedPath, currentExePath);
+            return new UpdateApplyResult(false, "無法還原上一個版本：" + ex.Message);
+        }
+
+        try
+        {
+            restart();
+        }
+        catch (Exception ex)
+        {
+            Restore(failedPath, currentExePath);
+            return new UpdateApplyResult(false, "無法重新啟動：" + ex.Message);
+        }
+
+        try
+        {
+            File.Delete(failedPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 下次啟動再清。
+        }
+
+        return new UpdateApplyResult(true, null);
+    }
+
+    /// <summary>
+    /// 清掉已安裝或更舊版本的背景下載資料夾，以及放了 7 天以上的 .part；
+    /// 比目前版本新的下載會保留，讓使用者重啟後還能續傳／安裝。
+    /// </summary>
+    public static void CleanupDownloads(string directory, string currentVersion)
+    {
+        try
+        {
+            if (!Directory.Exists(directory))
+            {
+                return;
+            }
+
+            foreach (var part in Directory.EnumerateFiles(directory, "*.part", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    if (DateTime.UtcNow - File.GetLastWriteTimeUtc(part) > TimeSpan.FromDays(7))
+                    {
+                        File.Delete(part);
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                }
+            }
+
+            foreach (var subdirectory in Directory.EnumerateDirectories(directory))
+            {
+                var folderVersion = Path.GetFileName(subdirectory);
+                if (!string.IsNullOrWhiteSpace(folderVersion) &&
+                    UpdateVersion.VersionOf(folderVersion) != null &&
+                    !UpdateVersion.IsNewer(currentVersion, folderVersion))
+                {
+                    try
+                    {
+                        Directory.Delete(subdirectory, recursive: true);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                    }
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 清不掉不影響程式。
         }
     }
 
