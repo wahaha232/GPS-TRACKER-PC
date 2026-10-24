@@ -80,6 +80,13 @@
                   Foreground="{DynamicResource AppText}"
                   BorderBrush="{DynamicResource AppBorderStrong}"
                   Click="Simulator_Click" />
+          <Button Content="好友"
+                  Padding="12,5"
+                  Margin="0,0,8,0"
+                  Background="{DynamicResource AppBorder}"
+                  Foreground="{DynamicResource AppText}"
+                  BorderBrush="{DynamicResource AppBorderStrong}"
+                  Click="Friends_Click" />
           <Button Content="檢查雲端更新"
                   Padding="12,5"
                   Margin="0,0,8,0"
@@ -153,6 +160,10 @@
       </Border>
 
       <Grid x:Name="SimulatorHost"
+            Background="{DynamicResource AppBackground}"
+            Visibility="Collapsed" />
+
+      <Grid x:Name="FriendsHost"
             Background="{DynamicResource AppBackground}"
             Visibility="Collapsed" />
     </Grid>

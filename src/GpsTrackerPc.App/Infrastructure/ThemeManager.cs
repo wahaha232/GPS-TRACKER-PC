@@ -87,6 +87,7 @@ internal static class ThemeManager
             ["AppDangerText"] = "#FCA5A5",
             ["AppDangerSurface"] = "#3B1D1D",
             ["AppDangerBorder"] = "#7F1D1D",
+            ["AppWarningText"] = "#FCD34D",
             ["AppOverlayBackground"] = "#CC0B1220",
         };
 
@@ -107,6 +108,7 @@ internal static class ThemeManager
             ["AppDangerText"] = "#B91C1C",
             ["AppDangerSurface"] = "#FEE2E2",
             ["AppDangerBorder"] = "#FCA5A5",
+            ["AppWarningText"] = "#B45309",
             ["AppOverlayBackground"] = "#E6FFFFFF",
         };
 }

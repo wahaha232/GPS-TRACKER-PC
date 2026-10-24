@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>好友位置</title>
+  <link href="vendor/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    html, body { height: 100%; margin: 0; background: #0b1220; }
+    #map { position: absolute; inset: 0; }
+    .friend-marker {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      pointer-events: none;
+      transform: translateY(-50%);
+      font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+    }
+    .friend-marker .dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.92);
+      box-shadow: 0 1px 5px rgba(0, 0, 0, 0.45);
+      background: #94a3b8;
+    }
+    .friend-marker .label {
+      margin-top: 5px;
+      max-width: 170px;
+      padding: 3px 7px;
+      border-radius: 5px;
+      background: rgba(15, 23, 42, 0.9);
+      color: #e2e8f0;
+      font-size: 12px;
+      line-height: 1.35;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .friend-marker .label small {
+      display: block;
+      color: #94a3b8;
+      font-size: 10px;
+    }
+    .friend-marker.kind-self .dot { background: #38bdf8; }
+    .friend-marker.kind-online .dot { background: #22c55e; }
+    .friend-marker.kind-offline .dot { background: #64748b; }
+    .friend-marker.kind-stopped .dot {
+      background: #f59e0b;
+      border-color: rgba(255, 255, 255, 0.6);
+    }
+    #empty {
+      position: absolute;
+      left: 50%;
+      top: 18px;
+      transform: translateX(-50%);
+      z-index: 2;
+      padding: 8px 14px;
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.88);
+      border: 1px solid #334155;
+      color: #94a3b8;
+      font-size: 13px;
+      font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+      pointer-events: none;
+    }
+    #empty[hidden] { display: none; }
+    .maplibregl-ctrl-attrib { font-size: 10px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="empty">目前沒有可顯示的位置</div>
+  <script src="vendor/maplibre-gl.js"></script>
+  <script src="friends-map-core.js"></script>
+  <script src="friends-map.js"></script>
+</body>
+</html>

@@ -1,0 +1,248 @@
+<UserControl x:Class="GpsTrackerPc.App.FriendsView"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Loaded="View_Loaded"
+        Background="{DynamicResource AppBackground}">
+  <UserControl.Resources>
+    <Style TargetType="Button" BasedOn="{StaticResource AppButton}">
+      <Setter Property="Padding" Value="10,4" />
+    </Style>
+    <Style TargetType="ToggleButton" BasedOn="{StaticResource AppToggleButton}">
+      <Setter Property="Padding" Value="12,6" />
+    </Style>
+    <Style TargetType="ListBox">
+      <Setter Property="Background" Value="{DynamicResource AppSurfaceAlt}" />
+      <Setter Property="Foreground" Value="{DynamicResource AppText}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AppBorder}" />
+    </Style>
+    <DataTemplate x:Key="SocialRowTemplate">
+      <Border Padding="11,9"
+              BorderBrush="{DynamicResource AppBorder}"
+              BorderThickness="0,0,0,1">
+        <StackPanel>
+          <DockPanel>
+            <TextBlock x:Name="RowName"
+                       Text="{Binding Name}"
+                       Foreground="{DynamicResource AppText}"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       TextTrimming="CharacterEllipsis"
+                       VerticalAlignment="Center" />
+            <TextBlock x:Name="RowStatus"
+                       Text="{Binding Status}"
+                       Foreground="{DynamicResource AppTextMuted}"
+                       FontSize="11"
+                       Margin="8,0,0,0"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Center" />
+          </DockPanel>
+          <TextBlock Text="{Binding Detail}"
+                     Foreground="{DynamicResource AppTextSoft}"
+                     FontSize="11"
+                     Margin="0,3,0,0"
+                     TextWrapping="Wrap" />
+          <TextBlock Text="{Binding Meta}"
+                     Foreground="{DynamicResource AppTextMuted}"
+                     FontSize="10"
+                     Margin="0,2,0,0"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding Online}" Value="True">
+          <Setter TargetName="RowStatus" Property="Foreground" Value="{DynamicResource AppSuccessText}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Stopped}" Value="True">
+          <Setter TargetName="RowStatus" Property="Foreground" Value="{DynamicResource AppWarningText}" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <Grid>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="440" />
+      <ColumnDefinition Width="*" />
+    </Grid.ColumnDefinitions>
+
+    <Border Grid.Column="0"
+            Background="{DynamicResource AppBackground}"
+            BorderBrush="{DynamicResource AppBorder}"
+            BorderThickness="0,0,1,0">
+      <Grid Margin="16,14">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <DockPanel Grid.Row="0">
+          <ToggleButton x:Name="ShareToggle"
+                        DockPanel.Dock="Right"
+                        Content="分享我的位置"
+                        VerticalAlignment="Center"
+                        Checked="ShareToggle_Changed"
+                        Unchecked="ShareToggle_Changed" />
+          <StackPanel>
+            <TextBlock Text="好友 &amp; 群組"
+                       Foreground="{DynamicResource AppText}"
+                       FontSize="20"
+                       FontWeight="SemiBold" />
+            <TextBlock Text="互相分享目前位置（端對端加密）"
+                       Foreground="{DynamicResource AppTextMuted}"
+                       FontSize="12"
+                       Margin="0,4,0,0" />
+          </StackPanel>
+        </DockPanel>
+
+        <TabControl x:Name="KindTabs"
+                    Grid.Row="1"
+                    Margin="0,12,0,0"
+                    Background="{DynamicResource AppSurfaceAlt}"
+                    BorderBrush="{DynamicResource AppBorder}"
+                    SelectionChanged="KindTabs_SelectionChanged">
+          <TabItem Header="好友">
+            <ListBox x:Name="FriendList"
+                     ItemTemplate="{StaticResource SocialRowTemplate}"
+                     BorderThickness="0"
+                     SelectionChanged="FriendList_SelectionChanged" />
+          </TabItem>
+          <TabItem Header="群組">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="150" />
+              </Grid.RowDefinitions>
+              <ListBox x:Name="GroupList"
+                       Grid.Row="0"
+                       ItemTemplate="{StaticResource SocialRowTemplate}"
+                       BorderThickness="0"
+                       SelectionChanged="GroupList_SelectionChanged" />
+              <TextBlock Grid.Row="1"
+                         Text="群組成員"
+                         Foreground="{DynamicResource AppTextMuted}"
+                         FontSize="11"
+                         Margin="10,8,0,4" />
+              <ListBox x:Name="MemberList"
+                       Grid.Row="2"
+                       ItemTemplate="{StaticResource SocialRowTemplate}"
+                       BorderThickness="0"
+                       Margin="0,0,0,2" />
+            </Grid>
+          </TabItem>
+        </TabControl>
+
+        <StackPanel Grid.Row="2" Margin="0,10,0,0">
+          <WrapPanel>
+            <Button Content="邀請好友"
+                    Margin="0,0,6,6"
+                    Click="InviteFriend_Click" />
+            <Button Content="新增好友"
+                    Margin="0,0,6,6"
+                    Click="AddFriend_Click" />
+            <Button Content="建立群組"
+                    Margin="0,0,6,6"
+                    Click="CreateGroup_Click" />
+            <Button Content="加入群組"
+                    Margin="0,0,6,6"
+                    Click="JoinGroup_Click" />
+            <Button Content="邀請碼"
+                    Margin="0,0,6,6"
+                    Click="ShowInvite_Click" />
+            <Button Content="移除"
+                    Margin="0,0,6,6"
+                    Click="Remove_Click" />
+            <Button Content="重新整理"
+                    Margin="0,0,6,6"
+                    Click="Refresh_Click" />
+            <Button Content="回首頁"
+                    Margin="0,0,0,6"
+                    Click="BackToHome_Click" />
+          </WrapPanel>
+          <TextBlock x:Name="SelfStatusText"
+                     Text="尚未取得目前位置"
+                     Foreground="{DynamicResource AppTextMuted}"
+                     FontSize="11"
+                     TextWrapping="Wrap"
+                     Margin="0,2,0,0" />
+          <TextBlock x:Name="StatusText"
+                     Text=""
+                     Foreground="{DynamicResource AppTextMuted}"
+                     FontSize="11"
+                     TextWrapping="Wrap"
+                     Margin="0,4,0,0" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Column="1">
+      <wv2:WebView2 x:Name="MapView" />
+
+      <Border Background="{DynamicResource AppOverlayBackground}"
+              CornerRadius="6"
+              Padding="10,7"
+              HorizontalAlignment="Left"
+              VerticalAlignment="Top"
+              Margin="12">
+        <StackPanel>
+          <TextBlock Text="好友位置"
+                     Foreground="{DynamicResource AppText}"
+                     FontSize="12"
+                     FontWeight="SemiBold"
+                     Margin="0,0,0,4" />
+          <StackPanel Orientation="Horizontal">
+            <Ellipse Width="9" Height="9" Fill="#38BDF8" Margin="0,0,4,0" />
+            <TextBlock Text="我" Foreground="{DynamicResource AppTextSoft}" FontSize="11" Margin="0,0,10,0" />
+            <Ellipse Width="9" Height="9" Fill="#22C55E" Margin="0,0,4,0" />
+            <TextBlock Text="線上" Foreground="{DynamicResource AppTextSoft}" FontSize="11" Margin="0,0,10,0" />
+            <Ellipse Width="9" Height="9" Fill="#64748B" Margin="0,0,4,0" />
+            <TextBlock Text="離線" Foreground="{DynamicResource AppTextSoft}" FontSize="11" Margin="0,0,10,0" />
+            <Ellipse Width="9" Height="9" Fill="#F59E0B" Margin="0,0,4,0" />
+            <TextBlock Text="停止分享" Foreground="{DynamicResource AppTextSoft}" FontSize="11" />
+          </StackPanel>
+          <TextBlock Text="位置由 ntfy.sh 中繼，內容以 AES-GCM 加密；邀請碼請只傳給信任的人。"
+                     Foreground="{DynamicResource AppTextMuted}"
+                     FontSize="10"
+                     MaxWidth="420"
+                     TextWrapping="Wrap"
+                     Margin="0,5,0,0" />
+        </StackPanel>
+      </Border>
+
+      <Border x:Name="LoadingPanel" Background="{DynamicResource AppBackground}">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+          <TextBlock Text="正在載入好友地圖…"
+                     Foreground="{DynamicResource AppTextMuted}"
+                     FontSize="14"
+                     HorizontalAlignment="Center" />
+          <TextBlock Text="第一次載入底圖需要網路。"
+                     Foreground="{DynamicResource AppTextMuted}"
+                     FontSize="11"
+                     Margin="0,6,0,0"
+                     HorizontalAlignment="Center" />
+        </StackPanel>
+      </Border>
+
+      <Border x:Name="MapErrorPanel"
+              Background="{DynamicResource AppBackground}"
+              Visibility="Collapsed">
+        <StackPanel HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    MaxWidth="600">
+          <TextBlock Text="無法載入好友地圖"
+                     Foreground="{DynamicResource AppDangerText}"
+                     FontSize="20"
+                     FontWeight="SemiBold"
+                     Margin="0,0,0,10" />
+          <TextBlock x:Name="MapErrorText"
+                     Foreground="{DynamicResource AppText}"
+                     FontSize="13"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

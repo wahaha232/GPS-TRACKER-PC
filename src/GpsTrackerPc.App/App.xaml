@@ -18,6 +18,7 @@
     <SolidColorBrush x:Key="AppDangerText" Color="#FCA5A5" />
     <SolidColorBrush x:Key="AppDangerSurface" Color="#3B1D1D" />
     <SolidColorBrush x:Key="AppDangerBorder" Color="#7F1D1D" />
+    <SolidColorBrush x:Key="AppWarningText" Color="#FCD34D" />
     <SolidColorBrush x:Key="AppOverlayBackground" Color="#CC0B1220" />
 
     <Style TargetType="TextBlock">
@@ -234,6 +235,66 @@
       </Setter>
     </Style>
     <Style TargetType="ToggleButton" BasedOn="{StaticResource AppToggleButton}" />
+    <Style TargetType="TabControl">
+      <Setter Property="Background" Value="{DynamicResource AppSurfaceAlt}" />
+      <Setter Property="Foreground" Value="{DynamicResource AppText}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AppBorder}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TabControl">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+              </Grid.RowDefinitions>
+              <TabPanel Grid.Row="0"
+                        IsItemsHost="True"
+                        Background="Transparent"
+                        Panel.ZIndex="1" />
+              <Border Grid.Row="1"
+                      Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="1">
+                <ContentPresenter x:Name="PART_SelectedContentHost"
+                                  ContentSource="SelectedContent" />
+              </Border>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="TabItem">
+      <Setter Property="Foreground" Value="{DynamicResource AppTextMuted}" />
+      <Setter Property="Background" Value="{DynamicResource AppSurfaceAlt}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AppBorder}" />
+      <Setter Property="Padding" Value="16,6" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TabItem">
+            <Border x:Name="TabBorder"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="1,1,1,0"
+                    Padding="{TemplateBinding Padding}"
+                    Margin="0,0,4,0">
+              <ContentPresenter ContentSource="Header"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource AppAccent}" />
+                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource AppAccent}" />
+                <Setter Property="Foreground" Value="{DynamicResource AppBackground}" />
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource AppBorderStrong}" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
     <Style TargetType="Separator">
       <Setter Property="Background" Value="{DynamicResource AppBorder}" />
     </Style>

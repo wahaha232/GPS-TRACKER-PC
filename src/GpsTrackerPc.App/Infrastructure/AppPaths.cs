@@ -36,6 +36,9 @@ internal static class AppPaths
 
     public static string StorageSettingsFile => Path.Combine(Root, "storage.json");
 
+    /// <summary>好友／群組清單、分享開關與固定裝置識別碼。</summary>
+    public static string SocialFile => Path.Combine(Root, "social.json");
+
     /// <summary>啟動時套用設定的資料夾；失敗時保留預設值。</summary>
     public static bool TryApplyDataDirectory(string? configured, out string? error)
     {

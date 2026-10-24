@@ -75,6 +75,7 @@ public partial class MainWindow : Window
     private bool _minimizeToTray;
     private bool _trayHintShown;
     private SimulatorView? _simulatorView;
+    private FriendsView? _friendsView;
 
     /// <summary>主視窗正在關閉（給子視窗判斷是否跟著結束，避免關閉途中跳提醒）。</summary>
     public bool IsClosing => _closing;
@@ -486,6 +487,8 @@ public partial class MainWindow : Window
 
     private void Simulator_Click(object sender, RoutedEventArgs e) => ShowSimulatorView();
 
+    private void Friends_Click(object sender, RoutedEventArgs e) => ShowFriendsView();
+
     /// <summary>在主視窗內容區顯示模擬路線編輯；第一次使用才建立，之後保留狀態。</summary>
     private void ShowSimulatorView()
     {
@@ -496,11 +499,32 @@ public partial class MainWindow : Window
             SimulatorHost.Children.Add(_simulatorView);
         }
 
+        _friendsView?.SetActive(false);
         ErrorPanel.Visibility = Visibility.Collapsed;
         LoadingPanel.Visibility = Visibility.Collapsed;
         Browser.Visibility = Visibility.Collapsed;
+        FriendsHost.Visibility = Visibility.Collapsed;
         SimulatorHost.Visibility = Visibility.Visible;
         _simulatorView.Focus();
+    }
+
+    /// <summary>好友／群組是獨立分頁；第一次開啟才建立，之後保留清單與地圖狀態。</summary>
+    private void ShowFriendsView()
+    {
+        if (_friendsView is null)
+        {
+            _friendsView = new FriendsView(_deviceNameStore);
+            _friendsView.BackToHomeRequested += (_, _) => ShowHomePage();
+            FriendsHost.Children.Add(_friendsView);
+        }
+
+        ErrorPanel.Visibility = Visibility.Collapsed;
+        LoadingPanel.Visibility = Visibility.Collapsed;
+        Browser.Visibility = Visibility.Collapsed;
+        SimulatorHost.Visibility = Visibility.Collapsed;
+        FriendsHost.Visibility = Visibility.Visible;
+        _friendsView.SetActive(true);
+        _friendsView.Focus();
     }
 
     /// <summary>從工具列圖示區回到主視窗。</summary>
@@ -541,7 +565,9 @@ public partial class MainWindow : Window
 
         Show();
         Activate();
+        _friendsView?.SetActive(false);
         SimulatorHost.Visibility = Visibility.Collapsed;
+        FriendsHost.Visibility = Visibility.Collapsed;
         Browser.Visibility = Visibility.Visible;
         if (Browser.CoreWebView2 != null)
         {
@@ -678,6 +704,7 @@ public partial class MainWindow : Window
 
         _closing = true;
         _simulatorView?.Shutdown();
+        _friendsView?.Shutdown();
 
         // 先取消背景工作，並解除 WebView2 事件，避免同步／導覽回來時再碰已關閉的視窗。
         try
