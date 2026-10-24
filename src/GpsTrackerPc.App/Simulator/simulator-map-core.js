@@ -7,8 +7,32 @@
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
+  // 超過這個點數就不再為每個路線點建立可拖曳的 DOM 標記，改用 GeoJSON 圖層畫圓點。
+  // 1000 點以上時，MapLibre 每格畫面都要更新所有 Marker 的位置，會造成明顯卡頓。
+  var ROUTE_POINT_MARKER_LIMIT = 200;
+
   function emptyFeatureCollection() {
     return { type: "FeatureCollection", features: [] };
+  }
+
+  function isDenseRoute(routePoints) {
+    return (routePoints || []).length > ROUTE_POINT_MARKER_LIMIT;
+  }
+
+  function routePointsFeature(routePoints, selectedId) {
+    var features = (routePoints || []).map(function (point, index) {
+      return {
+        type: "Feature",
+        properties: {
+          id: point.id,
+          index: index,
+          selected: point.id === selectedId
+        },
+        geometry: { type: "Point", coordinates: [point.lon, point.lat] }
+      };
+    });
+
+    return { type: "FeatureCollection", features: features };
   }
 
   function routeFeature(routePoints, loop) {
@@ -67,6 +91,27 @@
       });
     }
 
+    // 點數很多時用這個圖層畫路線點；預設隱藏，由 simulator.js 依點數決定要不要顯示。
+    // 不使用 symbol 文字（部分點陣底圖沒有 glyphs，會畫不出編號）。
+    if (!map.getSource("route-points")) {
+      map.addSource("route-points", { type: "geojson", data: emptyFeatureCollection() });
+    }
+
+    if (!map.getLayer("route-points-circles")) {
+      map.addLayer({
+        id: "route-points-circles",
+        type: "circle",
+        source: "route-points",
+        layout: { visibility: "none" },
+        paint: {
+          "circle-radius": ["case", ["==", ["get", "selected"], true], 8, 5],
+          "circle-color": ["case", ["==", ["get", "selected"], true], "#fbbf24", "#38bdf8"],
+          "circle-stroke-color": "#f8fafc",
+          "circle-stroke-width": 2
+        }
+      });
+    }
+
     if (!map.getSource("playback")) {
       map.addSource("playback", { type: "geojson", data: emptyFeatureCollection() });
     }
@@ -97,7 +142,10 @@
   }
 
   return {
+    ROUTE_POINT_MARKER_LIMIT: ROUTE_POINT_MARKER_LIMIT,
     emptyFeatureCollection: emptyFeatureCollection,
+    isDenseRoute: isDenseRoute,
+    routePointsFeature: routePointsFeature,
     routeFeature: routeFeature,
     ensureCustomLayers: ensureCustomLayers
   };

@@ -298,7 +298,21 @@
 
           <Separator />
           <TextBlock Text="路線檔" Style="{StaticResource Section}" />
-          <WrapPanel>
+          <ComboBox x:Name="ImportedGpxBox"
+                    DisplayMemberPath="Display"
+                    SelectedValuePath="FilePath"
+                    ToolTip="之前在匯入 GPX 頁面或模擬頁匯入過的檔案" />
+          <TextBlock x:Name="ImportedGpxHint"
+                     Text="還沒有匯入過的 GPX；用下面的「匯入 GPX／KML」選檔後會出現在這裡。"
+                     Foreground="{DynamicResource AppTextMuted}"
+                     FontSize="11"
+                     TextWrapping="Wrap"
+                     Margin="0,4,0,0" />
+          <WrapPanel Margin="0,6,0,0">
+            <Button x:Name="LoadImportedGpxButton"
+                    Content="載入選取的 GPX"
+                    Margin="0,0,6,6"
+                    Click="LoadImportedGpx_Click" />
             <Button Content="匯入 GPX／KML" Margin="0,0,6,6" Click="ImportRoute_Click" />
             <Button Content="匯出 GPX" Margin="0,0,6,6" Click="ExportGpx_Click" />
             <Button Content="匯出 KML" Margin="0,0,6,6" Click="ExportKml_Click" />

@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using GpsTrackerPc.App.Infrastructure;
+using GpsTrackerPc.Core.Gpx;
 using GpsTrackerPc.Core.Security;
 using GpsTrackerPc.Core.Simulator;
 using GpsTrackerPc.Simulation.Model;
@@ -30,6 +31,7 @@ public partial class SimulatorView : UserControl
     private readonly RouteEditorModel _route = new();
     private readonly FavoritesStore _favorites;
     private readonly RouteLibraryStore _library;
+    private readonly GpxFileHistoryStore _gpxHistory;
     private readonly HttpClient _searchClient;
     private readonly HttpClient _uploadClient;
     private readonly TokenStore _tokenStore;
@@ -74,6 +76,7 @@ public partial class SimulatorView : UserControl
         _deviceNameStore = deviceNameStore ?? throw new ArgumentNullException(nameof(deviceNameStore));
         _favorites = new FavoritesStore(AppPaths.FavoritesFile);
         _library = new RouteLibraryStore(AppPaths.RoutesDirectory);
+        _gpxHistory = new GpxFileHistoryStore(AppPaths.GpxHistoryFile);
         _searchClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         _uploadClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
         _geocoder = new NominatimGeocoder(_searchClient);
@@ -97,6 +100,7 @@ public partial class SimulatorView : UserControl
 
         RefreshAllUi(updateName: false);
         RefreshFavorites();
+        RefreshImportedGpxList();
         SetPlaybackControlState();
     }
 
@@ -401,6 +405,39 @@ public partial class SimulatorView : UserControl
                 $"{place.Name}（{place.Coordinates.FormattedLatitude()}, {place.Coordinates.FormattedLongitude()}）"))
             .ToList();
         _updatingUi = previous;
+    }
+
+    /// <summary>列出匯入 GPX 頁面與模擬頁用過、而且檔案還在的 GPX。</summary>
+    private void RefreshImportedGpxList()
+    {
+        if (!IsVisible)
+        {
+            return;
+        }
+
+        var previousSelection = ImportedGpxBox.SelectedValue as string;
+        var rows = _gpxHistory.Load()
+            .Where(entry => File.Exists(entry.FilePath))
+            .Select(entry => new ImportedGpxRow(entry.FilePath, entry.DisplayName))
+            .ToList();
+
+        var previous = _updatingUi;
+        _updatingUi = true;
+        ImportedGpxBox.ItemsSource = rows;
+        if (previousSelection != null)
+        {
+            ImportedGpxBox.SelectedValue = previousSelection;
+        }
+
+        if (ImportedGpxBox.SelectedItem == null && rows.Count > 0)
+        {
+            ImportedGpxBox.SelectedIndex = 0;
+        }
+
+        _updatingUi = previous;
+        ImportedGpxHint.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ImportedGpxBox.IsEnabled = rows.Count > 0;
+        LoadImportedGpxButton.IsEnabled = rows.Count > 0;
     }
 
     private void SendRoute()
@@ -971,11 +1008,34 @@ public partial class SimulatorView : UserControl
             return;
         }
 
+        await LoadRouteFileAsync(dialog.FileName);
+    }
+
+    private async void LoadImportedGpx_Click(object sender, RoutedEventArgs e)
+    {
+        if (ImportedGpxBox.SelectedItem is not ImportedGpxRow row)
+        {
+            SetStatus("請先選擇一個匯入過的 GPX。");
+            return;
+        }
+
+        if (!File.Exists(row.FilePath))
+        {
+            SetStatus($"找不到檔案：{row.FilePath}");
+            RefreshImportedGpxList();
+            return;
+        }
+
+        await LoadRouteFileAsync(row.FilePath);
+    }
+
+    /// <summary>從指定檔案載入路線；匯入過的路徑會記住，之後不用再選檔。</summary>
+    private async Task LoadRouteFileAsync(string path)
+    {
         SetStatus("匯入中…");
         try
         {
-            var fallbackName = Path.GetFileNameWithoutExtension(dialog.FileName);
-            var path = dialog.FileName;
+            var fallbackName = Path.GetFileNameWithoutExtension(path);
             var imported = await Task.Run(() =>
             {
                 using var stream = File.OpenRead(path);
@@ -992,6 +1052,20 @@ public partial class SimulatorView : UserControl
             RefreshAllUi(updateName: true);
             SendRoute();
             PostFit();
+
+            if (path.EndsWith(".gpx", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    _gpxHistory.Remember(path);
+                    RefreshImportedGpxList();
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+                {
+                    // 記錄失敗不影響匯入結果。
+                }
+            }
+
             SetStatus(imported.WasSimplified
                 ? $"已匯入「{_route.Name}」：原始 {imported.OriginalPointCount} 點，保留 {imported.KeptPointCount} 點。"
                 : $"已匯入「{_route.Name}」（{_route.Waypoints.Count} 點）。");
@@ -1555,11 +1629,19 @@ public partial class SimulatorView : UserControl
 
     private void HostWindow_StateChanged(object? sender, EventArgs e) => UpdateMapActivity();
 
-    private void HostWindow_Activated(object? sender, EventArgs e) => UpdateMapActivity();
+    private void HostWindow_Activated(object? sender, EventArgs e)
+    {
+        UpdateMapActivity();
+        RefreshImportedGpxList();
+    }
 
     private void HostWindow_Deactivated(object? sender, EventArgs e) => UpdateMapActivity();
 
-    private void View_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => UpdateMapActivity();
+    private void View_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        UpdateMapActivity();
+        RefreshImportedGpxList();
+    }
 
     /// <summary>
     /// 主視窗縮小、被其他視窗蓋住、失去焦點或切回紀錄網站時先停止送地圖更新；
@@ -1920,6 +2002,12 @@ public sealed record OutageRow(RouteOutage Outage, string Display)
 }
 
 public sealed record FavoriteRow(FavoritePlace Place, string Display)
+{
+    public override string ToString() => Display;
+}
+
+/// <summary>模擬頁「匯入過的 GPX」下拉項目。</summary>
+public sealed record ImportedGpxRow(string FilePath, string Display)
 {
     public override string ToString() => Display;
 }

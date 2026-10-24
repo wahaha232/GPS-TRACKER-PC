@@ -28,6 +28,9 @@ internal static class AppPaths
 
     public static string FavoritesFile => Path.Combine(Root, "favorites.json");
 
+    /// <summary>用過的 GPX 檔路徑，供模擬頁重複載入。</summary>
+    public static string GpxHistoryFile => Path.Combine(Root, "gpx-history.json");
+
     public static string RoutesDirectory => Path.Combine(Root, "routes");
 
     public static string CrashLogFile => Path.Combine(Root, "crash.log");

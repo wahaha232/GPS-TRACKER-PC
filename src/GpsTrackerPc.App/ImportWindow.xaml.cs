@@ -17,6 +17,7 @@ public partial class ImportWindow : Window
     private readonly TokenStore _tokenStore;
     private readonly DeviceNameStore _deviceNameStore;
     private readonly GitHubRecordUploader _uploader;
+    private readonly GpxFileHistoryStore _gpxHistory = new(AppPaths.GpxHistoryFile);
     private CancellationTokenSource? _cts;
     private bool _importing;
 
@@ -300,9 +301,11 @@ public partial class ImportWindow : Window
                 {
                     case GpxImportItemStatus.Uploaded:
                         uploaded++;
+                        RememberGpxFile(preparedRows[index].FilePath);
                         break;
                     case GpxImportItemStatus.Duplicate:
                         duplicate++;
+                        RememberGpxFile(preparedRows[index].FilePath);
                         break;
                     case GpxImportItemStatus.ParseError:
                         parseError++;
@@ -335,8 +338,20 @@ public partial class ImportWindow : Window
         }
     }
 
-    private static void ApplyResult(ImportRow row, GpxImportItemResult result)
+    /// <summary>匯入成功或重複時記住檔案路徑，讓模擬頁可以直接選來當路線。</summary>
+    private void RememberGpxFile(string filePath)
     {
+        try
+        {
+            _gpxHistory.Remember(filePath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            // 記錄失敗不影響匯入結果。
+        }
+    }
+
+    private static void ApplyResult(ImportRow row, GpxImportItemResult result)    {
         row.IsValid = false;
         row.Status = result.Status switch
         {

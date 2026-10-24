@@ -8,6 +8,10 @@
   var routeLoop = false;
   var markers = [];
   var selectedId = null;
+  var pointDrag = null;
+  var pointDragFrame = null;
+  var suppressMapClickUntil = 0;
+  var ignoreNextMapClick = false;
 
   var playbackActive = false;
   var playbackMarker = null;
@@ -147,19 +151,47 @@
     MapCore.ensureCustomLayers(map);
   }
 
+  function updateRoutePointsSource() {
+    var source = map.getSource("route-points");
+    if (source) source.setData(MapCore.routePointsFeature(routePoints, selectedId));
+  }
+
+  function setRoutePointsVisible(visible) {
+    var value = visible ? "visible" : "none";
+    if (map.getLayer("route-points-circles")) {
+      map.setLayoutProperty("route-points-circles", "visibility", value);
+    }
+  }
+
   function updateMarkerSelection() {
     markers.forEach(function (item) {
       if (item.id === selectedId) item.element.classList.add("selected");
       else item.element.classList.remove("selected");
     });
+
+    if (MapCore.isDenseRoute(routePoints)) {
+      updateRoutePointsSource();
+    }
   }
 
-  function renderMarkers(points) {
+  function clearMarkers() {
     markers.forEach(function (item) {
       item.marker.remove();
     });
     markers = [];
+  }
 
+  function renderMarkers(points) {
+    clearMarkers();
+    updateRoutePointsSource();
+
+    // 點數太多時不建立 DOM 標記：改成 GeoJSON 圓點圖層，只保留點選與拖曳目前點。
+    if (MapCore.isDenseRoute(points)) {
+      setRoutePointsVisible(!playbackActive);
+      return;
+    }
+
+    setRoutePointsVisible(false);
     points.forEach(function (point, index) {
       var element = document.createElement("button");
       element.type = "button";
@@ -191,6 +223,42 @@
 
     updateMarkerSelection();
   }
+
+  // 大量點位時用滑鼠拖曳選中的點：拖曳期間只更新圖層資料，放開才通知 C#。
+  function schedulePointDragUpdate() {
+    if (pointDragFrame !== null) return;
+    pointDragFrame = window.requestAnimationFrame(function () {
+      pointDragFrame = null;
+      updateRoutePointsSource();
+    });
+  }
+
+  function finishPointDrag() {
+    if (!pointDrag) return;
+
+    map.dragPan.enable();
+    map.getCanvas().style.cursor = "";
+    var drag = pointDrag;
+    pointDrag = null;
+
+    if (pointDragFrame !== null) {
+      window.cancelAnimationFrame(pointDragFrame);
+      pointDragFrame = null;
+    }
+
+    updateRoutePointsSource();
+    if (!drag.moved) return;
+
+    // 拖曳結束後的 click 不應該被當成「在地圖上新增路線點」。
+    suppressMapClickUntil = performance.now() + 400;
+    var point = routePoints[drag.index];
+    if (point) {
+      post("markerMoved", { id: point.id, lat: point.lat, lon: point.lon });
+    }
+  }
+
+  window.addEventListener("mouseup", finishPointDrag);
+  window.addEventListener("blur", finishPointDrag);
 
   function updatePlaybackSource() {
     var source = map.getSource("playback");
@@ -262,12 +330,20 @@
     markers.forEach(function (item) {
       item.element.style.display = "";
     });
+
+    if (MapCore.isDenseRoute(routePoints)) {
+      setRoutePointsVisible(true);
+    }
   }
 
   function hideRouteMarkers() {
     markers.forEach(function (item) {
       item.element.style.display = "none";
     });
+
+    if (MapCore.isDenseRoute(routePoints)) {
+      setRoutePointsVisible(false);
+    }
   }
 
   function clearPlayback() {
@@ -511,8 +587,73 @@
     ensureCustomLayers();
     updateAttribution(currentBasemap);
 
+    // 大量點位的圓點圖層要自己處理點選與拖曳；註冊順序要在一般地圖 click 之前。
+    map.on("click", "route-points-circles", function (event) {
+      if (playbackActive || performance.now() < suppressMapClickUntil) return;
+      var feature = event.features && event.features[0];
+      if (!feature) return;
+
+      ignoreNextMapClick = true;
+      selectedId = feature.properties.id;
+      updateMarkerSelection();
+      post("markerClick", { id: selectedId });
+    });
+
+    map.on("mousedown", "route-points-circles", function (event) {
+      if (playbackActive) return;
+      var feature = event.features && event.features[0];
+      if (!feature) return;
+
+      var index = Number(feature.properties.index);
+      if (!Number.isInteger(index) || !routePoints[index]) return;
+
+      pointDrag = {
+        index: index,
+        startX: event.point.x,
+        startY: event.point.y,
+        moved: false
+      };
+      map.dragPan.disable();
+      map.getCanvas().style.cursor = "grabbing";
+      event.preventDefault();
+    });
+
+    map.on("mousemove", "route-points-circles", function () {
+      if (!pointDrag) map.getCanvas().style.cursor = "grab";
+    });
+
+    map.on("mouseleave", "route-points-circles", function () {
+      if (!pointDrag) map.getCanvas().style.cursor = "";
+    });
+
+    map.on("mousemove", function (event) {
+      if (!pointDrag) return;
+
+      if (!pointDrag.moved) {
+        if (Math.abs(event.point.x - pointDrag.startX) +
+            Math.abs(event.point.y - pointDrag.startY) < 4) {
+          return;
+        }
+
+        pointDrag.moved = true;
+      }
+
+      var point = routePoints[pointDrag.index];
+      if (!point) return;
+      point.lon = event.lngLat.lng;
+      point.lat = event.lngLat.lat;
+      schedulePointDragUpdate();
+    });
+
     map.on("click", function (event) {
       if (playbackActive) return;
+
+      if (ignoreNextMapClick) {
+        ignoreNextMapClick = false;
+        return;
+      }
+
+      if (performance.now() < suppressMapClickUntil) return;
       post("mapClick", { lat: event.lngLat.lat, lon: event.lngLat.lng });
     });
 

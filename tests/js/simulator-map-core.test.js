@@ -38,11 +38,11 @@ test("style 重置後會重新加回所有自訂 source 與 layer", () => {
 
   assert.deepEqual(
     map.sourceAdds.sort(),
-    ["playback", "playback-tail", "route"]
+    ["playback", "playback-tail", "route", "route-points"]
   );
   assert.deepEqual(
     map.layerAdds.sort(),
-    ["playback-line", "playback-tail-line", "route-casing", "route-line"]
+    ["playback-line", "playback-tail-line", "route-casing", "route-line", "route-points-circles"]
   );
 
   // 模擬 setStyle：MapLibre 會清空 source/layer，再重新建立。
@@ -50,15 +50,20 @@ test("style 重置後會重新加回所有自訂 source 與 layer", () => {
   core.ensureCustomLayers(afterStyleReset);
 
   assert.ok(afterStyleReset.getSource("route"));
+  assert.ok(afterStyleReset.getSource("route-points"));
   assert.ok(afterStyleReset.getSource("playback"));
   assert.ok(afterStyleReset.getSource("playback-tail"));
   assert.ok(afterStyleReset.getLayer("route-line"));
+  assert.ok(afterStyleReset.getLayer("route-points-circles"));
   assert.ok(afterStyleReset.getLayer("playback-line"));
   assert.ok(afterStyleReset.getLayer("playback-tail-line"));
 
   // 路線線條要隱藏，軌跡只能由 playback 圖層在移動時畫出來。
   assert.equal(afterStyleReset.getLayer("route-line").layout.visibility, "none");
   assert.equal(afterStyleReset.getLayer("route-casing").layout.visibility, "none");
+
+  // 大量點位的圓點圖層預設隱藏，由頁面依點數決定何時顯示。
+  assert.equal(afterStyleReset.getLayer("route-points-circles").layout.visibility, "none");
 });
 
 test("重複呼叫不會重複加入 source 或 layer", () => {
@@ -67,8 +72,8 @@ test("重複呼叫不會重複加入 source 或 layer", () => {
   core.ensureCustomLayers(map);
   core.ensureCustomLayers(map);
 
-  assert.equal(map.sourceAdds.length, 3);
-  assert.equal(map.layerAdds.length, 4);
+  assert.equal(map.sourceAdds.length, 4);
+  assert.equal(map.layerAdds.length, 5);
 });
 
 test("routeFeature 支援循環與空路線", () => {
@@ -88,4 +93,39 @@ test("routeFeature 支援循環與空路線", () => {
 
   const empty = core.routeFeature([], false);
   assert.equal(empty.features.length, 0);
+});
+
+test("routePointsFeature 依順序產生點位並標出選取點", () => {
+  const feature = core.routePointsFeature(
+    [
+      { id: "a", lon: 121.5, lat: 25.0 },
+      { id: "b", lon: 121.6, lat: 25.1 }
+    ],
+    "b"
+  );
+
+  assert.equal(feature.type, "FeatureCollection");
+  assert.equal(feature.features.length, 2);
+  assert.deepEqual(feature.features[0].geometry.coordinates, [121.5, 25.0]);
+  assert.equal(feature.features[0].properties.id, "a");
+  assert.equal(feature.features[0].properties.index, 0);
+  assert.equal(feature.features[0].properties.selected, false);
+  assert.equal(feature.features[1].properties.index, 1);
+  assert.equal(feature.features[1].properties.selected, true);
+});
+
+test("點數超過上限時改用圖層顯示路線點", () => {
+  const limit = core.ROUTE_POINT_MARKER_LIMIT;
+  assert.ok(limit > 0);
+
+  const makePoints = (count) =>
+    Array.from({ length: count }, (_, index) => ({
+      id: String(index),
+      lon: 121.5,
+      lat: 25.0
+    }));
+
+  assert.equal(core.isDenseRoute(makePoints(limit)), false);
+  assert.equal(core.isDenseRoute(makePoints(limit + 1)), true);
+  assert.equal(core.isDenseRoute(null), false);
 });
