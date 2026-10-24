@@ -126,7 +126,12 @@ public class SocialTests : IDisposable
     {
         var target = SocialCrypto.CreateTarget(SocialTargetKind.Friend, "好友", SocialLimits.DefaultServer, DateTimeOffset.Now);
         var encrypted = SocialCrypto.Encrypt(Snapshot("device-000a", "電腦", 25.0, 121.0, now: DateTimeOffset.Now), target.KeyBase64);
-        var tampered = encrypted[..^1] + (encrypted[^1] == 'A' ? 'B' : 'A');
+
+        // 不要改最後一個 Base64 字元：它可能只承載 padding 位元，解碼後的位元組不變。
+        var index = encrypted.Length / 2;
+        var tampered = encrypted[..index] +
+            (encrypted[index] == 'A' ? 'B' : 'A') +
+            encrypted[(index + 1)..];
 
         Assert.Null(SocialCrypto.TryDecrypt(tampered, target.KeyBase64));
     }

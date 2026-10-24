@@ -7,11 +7,12 @@ public sealed record DeviceNameValidation(
     bool IsValid,
     bool HasSimulatedConflict,
     string? ErrorMessage,
-    string? WarningMessage);
+    string? WarningMessage,
+    bool HasNonSimulatedConflict = false);
 
 /// <summary>
-/// 裝置名稱規則：不能空白；不能和手機（非 simulated）同名；
-/// 和另一台模擬裝置同名時只警告，因為紀錄會合併成同一台。
+/// 裝置名稱規則：不能空白；可以用網站上已存在的名稱（含手機等非模擬紀錄），
+/// 但會警告紀錄將合併成同一台裝置。沿用自己目前的名稱時不警告。
 /// </summary>
 public static class DeviceNamePolicy
 {
@@ -35,26 +36,33 @@ public static class DeviceNamePolicy
             .Select(device => new ManifestDevice(device.DeviceName.Trim(), device.Source))
             .ToList();
 
-        if (list.Any(device =>
-                string.Equals(device.DeviceName, normalized, StringComparison.Ordinal) &&
-                !IsSimulated(device.Source)))
-        {
-            return new DeviceNameValidation(
-                false,
-                false,
-                $"「{normalized}」已是網站上的非模擬裝置名稱，請換一個名稱。",
-                null);
-        }
-
-        // 同一台電腦沿用目前名稱時，manifest 裡的同名模擬紀錄就是自己，不用警告。
+        // 同一台電腦沿用目前名稱時，manifest 裡的同名紀錄就是自己（不論來源），不用警告。
         var isCurrentName = string.Equals(
             (currentName ?? string.Empty).Trim(),
             normalized,
             StringComparison.Ordinal);
-        if (!isCurrentName &&
-            list.Any(device =>
-                string.Equals(device.DeviceName, normalized, StringComparison.Ordinal) &&
-                IsSimulated(device.Source)))
+        if (isCurrentName)
+        {
+            return new DeviceNameValidation(true, false, null, null);
+        }
+
+        var sameName = list
+            .Where(device => string.Equals(device.DeviceName, normalized, StringComparison.Ordinal))
+            .ToList();
+
+        // 名稱可能來自手機或舊版程式（沒有 source 欄位）。沿用時允許合併，
+        // 但要提醒使用者模擬紀錄會掛在這個既有裝置底下。
+        if (sameName.Any(device => !IsSimulated(device.Source)))
+        {
+            return new DeviceNameValidation(
+                true,
+                false,
+                null,
+                $"「{normalized}」已是網站上的裝置名稱（非模擬紀錄）。沿用後模擬紀錄會與它合併成同一台裝置。",
+                HasNonSimulatedConflict: true);
+        }
+
+        if (sameName.Count > 0)
         {
             return new DeviceNameValidation(
                 true,

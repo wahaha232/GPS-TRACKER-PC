@@ -78,14 +78,29 @@ public class DeviceNameTests : IDisposable
     }
 
     [Fact]
-    public void PolicyRejectsNameOfNonSimulatedDevice()
+    public void PolicyAllowsNameOfNonSimulatedDeviceWithWarning()
     {
         var result = DeviceNamePolicy.Validate(
             "POCO X6 Pro 5G",
             new[] { new ManifestDevice("POCO X6 Pro 5G", null) });
 
-        Assert.False(result.IsValid);
-        Assert.Contains("非模擬", result.ErrorMessage);
+        Assert.True(result.IsValid);
+        Assert.True(result.HasNonSimulatedConflict);
+        Assert.False(result.HasSimulatedConflict);
+        Assert.Contains("合併", result.WarningMessage);
+    }
+
+    [Fact]
+    public void PolicyAllowsKeepingCurrentNameThatBelongsToNonSimulatedDevice()
+    {
+        var result = DeviceNamePolicy.Validate(
+            "HOMEPC",
+            new[] { new ManifestDevice("HOMEPC", null) },
+            currentName: "HOMEPC");
+
+        Assert.True(result.IsValid);
+        Assert.Null(result.WarningMessage);
+        Assert.False(result.HasNonSimulatedConflict);
     }
 
     [Fact]

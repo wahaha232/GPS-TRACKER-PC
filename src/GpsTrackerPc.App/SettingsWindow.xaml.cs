@@ -123,13 +123,13 @@ public partial class SettingsWindow : Window
             return false;
         }
 
-        if (validation.HasSimulatedConflict)
+        if (validation.HasSimulatedConflict || validation.HasNonSimulatedConflict)
         {
             var answer = MessageBox.Show(
                 this,
-                (validation.WarningMessage ?? "這個名稱已被另一台模擬裝置使用。") +
-                "\n\n仍要儲存嗎？上傳後會合併成同一台裝置。",
-                "裝置名稱重複",
+                (validation.WarningMessage ?? "這個名稱已被其他裝置使用。") +
+                "\n\n仍要沿用這個名稱嗎？",
+                "裝置名稱已存在",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);
             if (answer != MessageBoxResult.Yes)
