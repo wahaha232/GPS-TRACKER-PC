@@ -225,7 +225,9 @@ public sealed class RouteEditorModel
             Name = name.Trim();
         }
 
-        Loop = shape == RandomRouteShape.Loop;
+        // 環狀路線本身就繞回起點附近；循環（折返）由使用者自己勾選，
+        // 不自動開啟，免得走完一圈又沿原路倒走回去。
+        Loop = false;
         UseGpxTiming = false;
     }
 

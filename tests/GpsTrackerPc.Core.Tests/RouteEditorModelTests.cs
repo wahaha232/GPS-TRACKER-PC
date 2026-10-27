@@ -119,7 +119,7 @@ public class RouteEditorModelTests
 
         Assert.Equal(20, model.Waypoints.Count);
         Assert.Equal("隨機測試", model.Name);
-        Assert.True(model.Loop);
+        Assert.False(model.Loop);
         Assert.Empty(model.Outages);
         Assert.False(model.UseGpxTiming);
         Assert.Equal(Taipei, model.Waypoints[0].Coordinates);

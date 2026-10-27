@@ -20,6 +20,9 @@ public class UpdateVersionTests
         Assert.True(UpdateVersion.IsNewer("1.2.3", "1.2.4"));
         Assert.True(UpdateVersion.IsNewer("1.2.9", "1.3.0"));
         Assert.True(UpdateVersion.IsNewer("1.9.9", "2.0.0"));
+        // 次版本進到兩位數要用數字比，不能用字串比（"0.10.0" 字串上小於 "0.9.2"）。
+        Assert.True(UpdateVersion.IsNewer("0.9.2", "0.10.0"));
+        Assert.False(UpdateVersion.IsNewer("0.10.0", "0.9.2"));
         Assert.False(UpdateVersion.IsNewer("1.2.3", "1.2.3"));
         Assert.False(UpdateVersion.IsNewer("2.0.0", "1.9.9"));
         Assert.False(UpdateVersion.IsNewer("bad", "1.0.0"));

@@ -15,8 +15,10 @@ public sealed record RoutePosition(
     double ElapsedSeconds);
 
 /// <summary>
-/// 路線播放器。和 Kotlin 版相同的狀態機、速度公式與邊界條件，
+/// 路線播放器。和 Kotlin 版相同的速度公式與邊界條件，
 /// 依 GPX 時間戳記播放或依固定速度前進。
+/// 非循環路線走到終點就停在終點；循環路線到終點後沿原路折返回起點，
+/// 一趟「起點 → 終點 → 起點」算一圈，不會從終點直線連回起點。
 /// </summary>
 public sealed class RouteSimulator
 {
@@ -29,6 +31,13 @@ public sealed class RouteSimulator
     /// <summary>依時間戳記播放：每一段走多久由 GPX 決定，速度因此隨段落變化（含原地停留）。</summary>
     private readonly bool _timed;
 
+    /// <summary>
+    /// 實際走的路線點順序（路線點索引）。非循環：0..n-1；
+    /// 循環（折返）：0..n-1..0，最後一個回到起點時算完成一圈。
+    /// </summary>
+    private readonly List<int> _path = new();
+
+    /// <summary>第 i 段是 _path[i] → _path[i + 1]。</summary>
     private readonly List<double> _legDistances = new();
     private readonly double _totalDistance;
     private readonly List<double> _timedLegSeconds = new();
@@ -38,7 +47,7 @@ public sealed class RouteSimulator
     /// <summary>目前這一步實際使用的速度（等速模式下，自然起伏會讓它隨時間變化）。</summary>
     private double _effectiveSpeed;
 
-    private int _currentWaypointIndex;
+    private int _pathIndex;
     private double _distanceIntoLeg;
     private double _distanceCompletedInLap;
     private double _stopRemainingSeconds;
@@ -52,44 +61,39 @@ public sealed class RouteSimulator
         _speedMetersPerSecond = route.SpeedKph / 3.6;
 
         _timed = route.UseGpxTiming && SimulationRoute.HasTiming(route.Waypoints);
-        for (var index = 0; index < route.Waypoints.Count - 1; index++)
+
+        var count = route.Waypoints.Count;
+        for (var index = 0; index < count; index++)
         {
-            _legDistances.Add(
-                GeoMath.DistanceMeters(
-                    route.Waypoints[index].Coordinates,
-                    route.Waypoints[index + 1].Coordinates));
+            _path.Add(index);
         }
 
         if (route.Loop)
         {
+            for (var index = count - 2; index >= 0; index--)
+            {
+                _path.Add(index);
+            }
+        }
+
+        for (var index = 0; index < _path.Count - 1; index++)
+        {
             _legDistances.Add(
                 GeoMath.DistanceMeters(
-                    route.Waypoints[^1].Coordinates,
-                    route.Waypoints[0].Coordinates));
+                    route.Waypoints[_path[index]].Coordinates,
+                    route.Waypoints[_path[index + 1]].Coordinates));
         }
 
         _totalDistance = _legDistances.Sum();
 
         if (_timed)
         {
-            var open = new List<double>();
-            for (var index = 0; index < route.Waypoints.Count - 1; index++)
+            // 折返段沿用去程同一段的 GPX 時間差，所以回程速度和去程一樣。
+            for (var index = 0; index < _path.Count - 1; index++)
             {
-                open.Add(
-                    (route.Waypoints[index + 1].TimeOffsetSeconds!.Value -
-                     route.Waypoints[index].TimeOffsetSeconds!.Value));
-            }
-
-            _timedLegSeconds.AddRange(open);
-            if (route.Loop)
-            {
-                // 循環路線的「回到起點」那一段 GPX 沒有時間，用整段的平均速度估。
-                var openDistance = _legDistances.Take(open.Count).Sum();
-                var openSeconds = open.Sum();
-                var average = openSeconds > 0 && openDistance > 0
-                    ? openDistance / openSeconds
-                    : _speedMetersPerSecond;
-                _timedLegSeconds.Add(_legDistances[^1] / average);
+                _timedLegSeconds.Add(Math.Abs(
+                    route.Waypoints[_path[index + 1]].TimeOffsetSeconds!.Value -
+                    route.Waypoints[_path[index]].TimeOffsetSeconds!.Value));
             }
         }
 
@@ -107,8 +111,10 @@ public sealed class RouteSimulator
             : route.Waypoints[0].StopDurationSeconds;
     }
 
-    /// <summary>預估整趟要多久（秒）；循環路線沒有終點，回傳 null。</summary>
+    /// <summary>預估整趟要多久（秒）；循環路線由呼叫端決定圈數，回傳 null。</summary>
     public double? EstimatedTotalSeconds { get; }
+
+    private int LastPathIndex => _path.Count - 1;
 
     public RoutePosition Current() => BuildPosition();
 
@@ -146,21 +152,17 @@ public sealed class RouteSimulator
                 }
             }
 
-            if (!_route.Loop && _currentWaypointIndex == _route.Waypoints.Count - 1)
+            if (!_route.Loop && _pathIndex == LastPathIndex)
             {
                 _complete = true;
                 break;
             }
 
-            var targetWaypointIndex = (_currentWaypointIndex + 1) % _route.Waypoints.Count;
-            var legIndex = _currentWaypointIndex == _route.Waypoints.Count - 1
-                ? _legDistances.Count - 1
-                : _currentWaypointIndex;
-            var legDistance = _legDistances[legIndex];
+            var legDistance = _legDistances[_pathIndex];
             var remainingLegDistance = Math.Max(legDistance - _distanceIntoLeg, 0.0);
             if (remainingLegDistance <= 1e-6)
             {
-                ArriveAt(targetWaypointIndex, legDistance);
+                ArriveAt(_pathIndex + 1, legDistance);
                 continue;
             }
 
@@ -175,7 +177,7 @@ public sealed class RouteSimulator
             {
                 remainingSeconds -= travelSeconds;
                 _elapsedSeconds += travelSeconds;
-                ArriveAt(targetWaypointIndex, legDistance);
+                ArriveAt(_pathIndex + 1, legDistance);
             }
         }
 
@@ -211,21 +213,18 @@ public sealed class RouteSimulator
                 throw new InvalidOperationException("Route contains too many zero-length steps");
             }
 
-            if (!_route.Loop && _currentWaypointIndex == _route.Waypoints.Count - 1)
+            if (!_route.Loop && _pathIndex == LastPathIndex)
             {
                 _complete = true;
                 break;
             }
 
-            var targetWaypointIndex = (_currentWaypointIndex + 1) % _route.Waypoints.Count;
-            var legIndex = _currentWaypointIndex == _route.Waypoints.Count - 1
-                ? _legDistances.Count - 1
-                : _currentWaypointIndex;
+            var legIndex = _pathIndex;
             var legSeconds = _timedLegSeconds[legIndex];
             var secondsLeft = Math.Max(legSeconds - _timeIntoLeg, 0.0);
             if (secondsLeft <= 1e-9)
             {
-                ArriveTimed(targetWaypointIndex, _legDistances[legIndex]);
+                ArriveTimed(_pathIndex + 1, _legDistances[legIndex]);
                 continue;
             }
 
@@ -240,37 +239,39 @@ public sealed class RouteSimulator
             {
                 remainingSeconds -= secondsLeft;
                 _elapsedSeconds += secondsLeft;
-                ArriveTimed(targetWaypointIndex, _legDistances[legIndex]);
+                ArriveTimed(_pathIndex + 1, _legDistances[legIndex]);
             }
         }
 
         return BuildPosition();
     }
 
-    private void ArriveTimed(int targetWaypointIndex, double completedLegDistance)
+    private void ArriveTimed(int targetPathIndex, double completedLegDistance)
     {
-        ArriveAt(targetWaypointIndex, completedLegDistance);
+        ArriveAt(targetPathIndex, completedLegDistance);
         _timeIntoLeg = 0.0;
         _stopRemainingSeconds = 0.0;
-        if (!_route.Loop && targetWaypointIndex == _route.Waypoints.Count - 1)
+        if (!_route.Loop && targetPathIndex == LastPathIndex)
         {
             _complete = true;
         }
     }
 
-    private void ArriveAt(int targetWaypointIndex, double completedLegDistance)
+    private void ArriveAt(int targetPathIndex, double completedLegDistance)
     {
         _distanceCompletedInLap += completedLegDistance;
-        _currentWaypointIndex = targetWaypointIndex;
+        _pathIndex = targetPathIndex;
         _distanceIntoLeg = 0.0;
-        _stopRemainingSeconds = _route.Waypoints[targetWaypointIndex].StopDurationSeconds;
-        if (_route.Loop && targetWaypointIndex == 0)
+        _stopRemainingSeconds = _route.Waypoints[_path[targetPathIndex]].StopDurationSeconds;
+        if (_route.Loop && targetPathIndex == LastPathIndex)
         {
+            // 折返回到起點：完成一圈，從頭再走一次。
             _lap += 1;
             _distanceCompletedInLap = 0.0;
+            _pathIndex = 0;
         }
         else if (!_route.Loop &&
-                 targetWaypointIndex == _route.Waypoints.Count - 1 &&
+                 targetPathIndex == LastPathIndex &&
                  _stopRemainingSeconds == 0.0)
         {
             _complete = true;
@@ -279,17 +280,13 @@ public sealed class RouteSimulator
 
     private RoutePosition BuildPosition()
     {
-        var currentWaypoint = _route.Waypoints[_currentWaypointIndex];
-        var atTerminal = !_route.Loop && _currentWaypointIndex == _route.Waypoints.Count - 1;
-        var targetWaypointIndex = atTerminal
-            ? _currentWaypointIndex
-            : (_currentWaypointIndex + 1) % _route.Waypoints.Count;
-        var targetWaypoint = _route.Waypoints[targetWaypointIndex];
-        var legIndex = atTerminal
-            ? -1
-            : _currentWaypointIndex == _route.Waypoints.Count - 1
-                ? _legDistances.Count - 1
-                : _currentWaypointIndex;
+        var currentWaypointIndex = _path[_pathIndex];
+        var currentWaypoint = _route.Waypoints[currentWaypointIndex];
+        var atTerminal = !_route.Loop && _pathIndex == LastPathIndex;
+        var targetWaypoint = atTerminal
+            ? currentWaypoint
+            : _route.Waypoints[_path[_pathIndex + 1]];
+        var legIndex = atTerminal ? -1 : _pathIndex;
         var legDistance = legIndex >= 0 ? _legDistances[legIndex] : 0.0;
         var fraction = legDistance <= 1e-9 ? 0.0 : _distanceIntoLeg / legDistance;
         var coordinates = legIndex < 0 || _stopRemainingSeconds > 0
@@ -314,7 +311,7 @@ public sealed class RouteSimulator
                 ? 0f
                 : GeoMath.InitialBearingDegrees(currentWaypoint.Coordinates, targetWaypoint.Coordinates),
             progress,
-            _currentWaypointIndex,
+            currentWaypointIndex,
             _lap,
             isStopped,
             _complete,

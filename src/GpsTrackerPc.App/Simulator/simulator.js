@@ -5,7 +5,6 @@
   var mapErrorText = document.getElementById("mapErrorText");
   var attributionElement = document.getElementById("basemapAttribution");
   var routePoints = [];
-  var routeLoop = false;
   var markers = [];
   var selectedId = null;
   var pointDrag = null;
@@ -139,7 +138,7 @@
   }
 
   function routeFeature() {
-    return MapCore.routeFeature(routePoints, routeLoop);
+    return MapCore.routeFeature(routePoints);
   }
 
   function updateRouteSource() {
@@ -529,7 +528,6 @@
     clearPlayback();
     playbackActive = false;
     routePoints = message.points || [];
-    routeLoop = !!message.loop;
 
     if (Object.prototype.hasOwnProperty.call(message, "selectedId")) {
       selectedId = message.selectedId;

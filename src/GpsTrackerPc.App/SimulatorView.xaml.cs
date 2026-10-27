@@ -55,6 +55,8 @@ public partial class SimulatorView : UserControl
     private bool _mapUpdatesEnabled;
     private int _sentSampleCount;
     private readonly MapSettingsStore _mapSettingsStore;
+    private readonly SpeedPresetStore _speedPresetStore;
+    private IReadOnlyList<SpeedPreset> _speedPresets = SpeedPresetStore.Defaults;
     private BasemapOption _basemap = BasemapCatalog.Default;
     private bool _followEnabled = true;
     private ViewportBounds? _viewport;
@@ -86,6 +88,8 @@ public partial class SimulatorView : UserControl
         var mapSettings = _mapSettingsStore.Load();
         _basemap = BasemapCatalog.Options.First(option => option.Kind == mapSettings.Basemap);
         _followEnabled = mapSettings.Follow;
+        _speedPresetStore = new SpeedPresetStore(AppPaths.SpeedPresetsFile);
+        _speedPresets = _speedPresetStore.Load();
         _playbackTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMilliseconds(PlaybackMapPolicy.UpdateIntervalMilliseconds),
@@ -100,6 +104,7 @@ public partial class SimulatorView : UserControl
         FollowToggle.IsChecked = _followEnabled;
         _updatingUi = false;
 
+        RefreshSpeedPresetButtons();
         RefreshAllUi(updateName: false);
         RefreshFavorites();
         RefreshImportedGpxList();
@@ -664,7 +669,6 @@ public partial class SimulatorView : UserControl
         {
             type = "setRoute",
             points,
-            loop = _route.Loop,
             selectedId = _selectedWaypointId,
         });
     }
@@ -805,6 +809,103 @@ public partial class SimulatorView : UserControl
         {
             SetStatus(ex.Message);
         }
+    }
+
+    /// <summary>依目前的自訂速度重建「走路 5」這類按鈕，最後加一個「自訂…」。</summary>
+    private void RefreshSpeedPresetButtons()
+    {
+        SpeedPresetPanel.Children.Clear();
+        foreach (var preset in _speedPresets)
+        {
+            var button = new Button
+            {
+                Content = preset.ButtonText,
+                Tag = preset.SpeedKph.ToString(CultureInfo.InvariantCulture),
+                Margin = new Thickness(0, 0, 6, 6),
+            };
+            button.Click += SpeedPreset_Click;
+            SpeedPresetPanel.Children.Add(button);
+        }
+
+        var edit = new Button
+        {
+            Content = "自訂…",
+            Margin = new Thickness(0, 0, 6, 6),
+            ToolTip = "修改各移動方式的速度",
+        };
+        edit.Click += EditSpeedPresets_Click;
+        SpeedPresetPanel.Children.Add(edit);
+    }
+
+    private void EditSpeedPresets_Click(object sender, RoutedEventArgs e)
+    {
+        SpeedPresetEditorItems.ItemsSource = _speedPresets
+            .Select(preset => new SpeedPresetEditRow(preset))
+            .ToList();
+        SpeedPresetEditor.Visibility = Visibility.Visible;
+    }
+
+    private void SaveSpeedPresets_Click(object sender, RoutedEventArgs e)
+    {
+        if (SpeedPresetEditorItems.ItemsSource is not IEnumerable<SpeedPresetEditRow> rows)
+        {
+            return;
+        }
+
+        var edited = new List<SpeedPreset>();
+        foreach (var row in rows)
+        {
+            if (!double.TryParse(
+                    row.SpeedText.Trim(),
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out var speed) ||
+                !SpeedPresetStore.IsValidSpeed(speed))
+            {
+                SetStatus($"{row.Preset.Label}的速度必須是 0.5 到 500 之間的數字。");
+                return;
+            }
+
+            edited.Add(row.Preset with { SpeedKph = speed });
+        }
+
+        try
+        {
+            _speedPresetStore.Save(edited);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            SetStatus("儲存移動方式速度失敗：" + ex.Message);
+            return;
+        }
+
+        _speedPresets = edited;
+        RefreshSpeedPresetButtons();
+        SpeedPresetEditor.Visibility = Visibility.Collapsed;
+        SetStatus("已儲存移動方式速度。");
+    }
+
+    private void ResetSpeedPresets_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _speedPresetStore.Reset();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            SetStatus("恢復預設速度失敗：" + ex.Message);
+            return;
+        }
+
+        _speedPresets = SpeedPresetStore.Defaults;
+        RefreshSpeedPresetButtons();
+        SpeedPresetEditor.Visibility = Visibility.Collapsed;
+        SetStatus("移動方式速度已恢復預設。");
+    }
+
+    private void CancelSpeedPresets_Click(object sender, RoutedEventArgs e)
+    {
+        SpeedPresetEditor.Visibility = Visibility.Collapsed;
     }
 
     private void WaypointList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1770,7 +1871,7 @@ public partial class SimulatorView : UserControl
             parsed < 1 ||
             parsed > 10_000)
         {
-            SetStatus("循環路線的圈數必須是 1 到 10000 的整數。");
+            SetStatus("循環路線的來回次數必須是 1 到 10000 的整數。");
             return false;
         }
 
@@ -2213,4 +2314,20 @@ public sealed record FavoriteRow(FavoritePlace Place, string Display)
 public sealed record ImportedGpxRow(string FilePath, string Display)
 {
     public override string ToString() => Display;
+}
+
+/// <summary>模擬頁「自訂…」速度編輯列；只改速度，名稱固定。</summary>
+public sealed class SpeedPresetEditRow
+{
+    public SpeedPresetEditRow(SpeedPreset preset)
+    {
+        Preset = preset;
+        SpeedText = preset.SpeedKph.ToString("0.##", CultureInfo.InvariantCulture);
+    }
+
+    public SpeedPreset Preset { get; }
+
+    public string Label => Preset.Label;
+
+    public string SpeedText { get; set; }
 }

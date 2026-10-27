@@ -209,6 +209,42 @@ public class PlaybackControllerTests
     }
 
     [Fact]
+    public void RestoreHandlesManyPointShortLoopRoute()
+    {
+        // 500 點、半徑 50 公尺的環狀路線（約 1 公里、每段約 2 公尺）以 200 km/h 折返循環，
+        // 600 秒內會經過約 1.7 萬個路線點；還原時一次推進太多會超過 RouteSimulator 的單次上限。
+        var points = RandomRouteGenerator.Generate(
+            new Coordinates(25.0478, 121.5170),
+            500,
+            50.0,
+            RandomRouteShape.Loop,
+            new Random(7));
+        var route = new SimulationRoute(
+            name: "多點短圈",
+            waypoints: points.Select((point, index) => new RouteWaypoint($"p{index}", point)).ToList(),
+            speedKph: 200.0,
+            loop: true);
+        var snapshot = new SimulationResumeSnapshot(
+            RouteJsonCodec.Encode(route),
+            600.0,
+            0.0,
+            10_000,
+            1,
+            WasPlaying: false,
+            new[]
+            {
+                new PlaybackSample(points[0], 0.0, 0f, false),
+                new PlaybackSample(points[1], 1.0, 55.6f, false),
+            },
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+
+        var restored = PlaybackController.Restore(route, snapshot);
+
+        TestAssert.Close(600.0, restored.ElapsedSeconds, 1e-3);
+        Assert.Equal(PlaybackState.Paused, restored.State);
+    }
+
+    [Fact]
     public void RestoreKeepsPausedState()
     {
         var route = CreateRoute();

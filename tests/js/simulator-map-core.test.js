@@ -76,22 +76,19 @@ test("重複呼叫不會重複加入 source 或 layer", () => {
   assert.equal(map.layerAdds.length, 5);
 });
 
-test("routeFeature 支援循環與空路線", () => {
-  const loop = core.routeFeature(
-    [
-      { lon: 121.5, lat: 25.0 },
-      { lon: 121.6, lat: 25.1 }
-    ],
-    true
-  );
+test("routeFeature 不會從終點閉合回起點，空路線沒有線條", () => {
+  const line = core.routeFeature([
+    { lon: 121.5, lat: 25.0 },
+    { lon: 121.6, lat: 25.1 }
+  ]);
 
-  assert.equal(loop.features[0].geometry.type, "LineString");
+  assert.equal(line.features[0].geometry.type, "LineString");
   assert.deepEqual(
-    loop.features[0].geometry.coordinates,
-    [[121.5, 25.0], [121.6, 25.1], [121.5, 25.0]]
+    line.features[0].geometry.coordinates,
+    [[121.5, 25.0], [121.6, 25.1]]
   );
 
-  const empty = core.routeFeature([], false);
+  const empty = core.routeFeature([]);
   assert.equal(empty.features.length, 0);
 });
 

@@ -22,6 +22,8 @@ internal static class AppPaths
 
     public static string MapSettingsFile => Path.Combine(Root, "map-settings.json");
 
+    public static string SpeedPresetsFile => Path.Combine(Root, "speed-presets.json");
+
     public static string UpdateCheckFile => Path.Combine(Root, "update-check.json");
 
     public static string ThemeFile => Path.Combine(Root, "theme.json");

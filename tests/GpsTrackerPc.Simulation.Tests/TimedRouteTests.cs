@@ -106,14 +106,25 @@ public class TimedRouteTests
     }
 
     [Fact]
-    public void LoopRouteClosesWithTheAverageSpeed()
+    public void LoopRouteReturnsWithEachLegsOwnTiming()
     {
-        var route = TimedRoute(new[] { (0.0, 0L), (0.001, 100L) }, loop: true);
+        // 去程：第一段 100 秒（慢）、第二段 10 秒（快）。折返時沿用同一段的時間差。
+        var route = TimedRoute(new[] { (0.0, 0L), (0.001, 100L), (0.002, 110L) }, loop: true);
         var simulator = new RouteSimulator(route);
-        simulator.Advance(100.0); // 走完第一段
-        var closing = simulator.Advance(10.0); // 回程段
-        Assert.False(closing.IsComplete);
-        TestAssert.Close(1.112, closing.SpeedMetersPerSecond, 0.02);
+        simulator.Advance(110.0); // 走完去程
+
+        var fastReturn = simulator.Advance(5.0); // 終點 → 中間點（10 秒那段）
+        Assert.False(fastReturn.IsComplete);
+        TestAssert.Close(11.12, fastReturn.SpeedMetersPerSecond, 0.2);
+        TestAssert.Close(0.0015, fastReturn.Coordinates.Longitude, 1e-5);
+
+        var slowReturn = simulator.Advance(55.0); // 中間點 → 起點（100 秒那段）
+        Assert.Equal(0, slowReturn.Lap);
+        TestAssert.Close(1.112, slowReturn.SpeedMetersPerSecond, 0.02);
+        TestAssert.Close(0.0005, slowReturn.Coordinates.Longitude, 1e-5);
+
+        var lapDone = simulator.Advance(50.5);
+        Assert.Equal(1, lapDone.Lap);
     }
 
     [Fact]

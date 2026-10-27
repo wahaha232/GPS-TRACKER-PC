@@ -36,6 +36,7 @@ public sealed class PlaybackController
 {
     private const double SampleIntervalSeconds = 1.0;
     private const double LoopStepSeconds = 0.1;
+    private const double RestoreStepSeconds = 5.0;
     private const double Epsilon = 1e-9;
     private const int MaxIterations = 1_000_000;
 
@@ -149,7 +150,9 @@ public sealed class PlaybackController
         var remaining = Math.Max(0.0, snapshot.ElapsedSeconds);
         while (remaining > Epsilon && !_current.IsComplete)
         {
-            var step = Math.Min(remaining, 600.0);
+            // 每一步要夠小：RouteSimulator 單次 Advance 經過的路線點有上限，
+            // 多點、短圈的循環（折返）路線一大步會超過上限而失敗。
+            var step = Math.Min(remaining, RestoreStepSeconds);
             _current = _simulator.Advance(step);
             remaining -= step;
         }

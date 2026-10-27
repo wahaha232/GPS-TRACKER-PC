@@ -35,14 +35,11 @@
     return { type: "FeatureCollection", features: features };
   }
 
-  function routeFeature(routePoints, loop) {
+  // 循環路線是沿原路折返，不會從終點直線連回起點，所以線條一律不閉合。
+  function routeFeature(routePoints) {
     var coordinates = (routePoints || []).map(function (point) {
       return [point.lon, point.lat];
     });
-
-    if (coordinates.length > 1 && loop) {
-      coordinates.push([coordinates[0][0], coordinates[0][1]]);
-    }
 
     return coordinates.length >= 2
       ? {

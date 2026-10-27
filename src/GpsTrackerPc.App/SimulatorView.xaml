@@ -147,18 +147,50 @@
           </WrapPanel>
 
           <TextBlock Text="速度（km/h）" Style="{StaticResource Section}" />
-          <WrapPanel x:Name="SpeedPresetPanel">
-            <Button Content="走路 5" Tag="5" Margin="0,0,6,6" Click="SpeedPreset_Click" />
-            <Button Content="跑步 10" Tag="10" Margin="0,0,6,6" Click="SpeedPreset_Click" />
-            <Button Content="騎車 18" Tag="18" Margin="0,0,6,6" Click="SpeedPreset_Click" />
-            <Button Content="開車 40" Tag="40" Margin="0,0,6,6" Click="SpeedPreset_Click" />
-          </WrapPanel>
+          <!-- 移動方式速度按鈕由 SpeedPresetStore 產生，數值可按「自訂…」修改。 -->
+          <WrapPanel x:Name="SpeedPresetPanel" />
+          <StackPanel x:Name="SpeedPresetEditor" Visibility="Collapsed" Margin="0,0,0,6">
+            <TextBlock Text="自訂移動方式速度（km/h，0.5–500）"
+                       Foreground="{DynamicResource AppTextMuted}"
+                       FontSize="12"
+                       Margin="0,0,0,4" />
+            <ItemsControl x:Name="SpeedPresetEditorItems">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <TextBlock Text="{Binding Label}" Width="48" VerticalAlignment="Center" />
+                    <TextBox Text="{Binding SpeedText, UpdateSourceTrigger=PropertyChanged}" Width="70" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <WrapPanel>
+              <Button Content="儲存速度" Margin="0,0,6,0" Click="SaveSpeedPresets_Click" />
+              <Button Content="恢復預設" Margin="0,0,6,0" Click="ResetSpeedPresets_Click" />
+              <Button Content="取消" Click="CancelSpeedPresets_Click" />
+            </WrapPanel>
+          </StackPanel>
           <StackPanel Orientation="Horizontal">
             <TextBox x:Name="SpeedBox" Width="80" Text="5" />
             <Button x:Name="ApplySpeedButton" Content="套用速度" Margin="6,0,0,0" Click="ApplySpeed_Click" />
           </StackPanel>
 
-          <CheckBox x:Name="LoopCheck" Content="循環路線" Checked="Option_Changed" Unchecked="Option_Changed" />
+          <CheckBox x:Name="LoopCheck"
+                    Content="循環路線（到終點後沿原路折返回起點）"
+                    Checked="Option_Changed"
+                    Unchecked="Option_Changed" />
+          <StackPanel Orientation="Horizontal" Margin="22,2,0,4">
+            <TextBlock Text="來回次數" VerticalAlignment="Center" Margin="0,0,6,0" />
+            <TextBox x:Name="LapsBox"
+                     Width="60"
+                     Text="1"
+                     ToolTip="起點 → 終點 → 起點 算 1 次（1–10000）" />
+            <TextBlock Text="次（起點→終點→起點算 1 次）"
+                       VerticalAlignment="Center"
+                       Margin="6,0,0,0"
+                       Foreground="{DynamicResource AppTextMuted}"
+                       FontSize="12" />
+          </StackPanel>
           <CheckBox x:Name="NaturalCheck" Content="速度自然起伏" Checked="Option_Changed" Unchecked="Option_Changed" />
           <CheckBox x:Name="TimingCheck" Content="依 GPX 時間播放（路線要有時間資料）" Checked="Option_Changed" Unchecked="Option_Changed" />
           <Button Content="套用"
@@ -267,8 +299,6 @@
               <ComboBoxItem Content="4x" Tag="4" />
               <ComboBoxItem Content="8x" Tag="8" />
             </ComboBox>
-            <TextBlock Text="圈數" VerticalAlignment="Center" Margin="12,0,6,0" />
-            <TextBox x:Name="LapsBox" Width="50" Text="1" />
             <Button x:Name="DirectGenerateButton"
                     Content="直接產生"
                     Margin="8,0,0,0"
