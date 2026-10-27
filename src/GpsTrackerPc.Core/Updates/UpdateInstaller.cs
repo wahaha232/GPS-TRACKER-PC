@@ -44,6 +44,17 @@ public static class UpdateInstaller
             return new UpdateApplyResult(false, "無法備份目前版本：" + ex.Message);
         }
 
+        // File.Move 會保留原檔的修改時間（上一次安裝的時間）；不重設的話，
+        // 兩次更新相隔超過 7 天時，CleanupOldVersion 會在下次啟動就刪掉 .old，無法回復。
+        try
+        {
+            File.SetLastWriteTimeUtc(backupPath, DateTime.UtcNow);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 時間設不了不影響安裝；最壞情況是 .old 提早被清掉。
+        }
+
         try
         {
             File.Copy(downloadedFilePath, currentExePath, overwrite: false);

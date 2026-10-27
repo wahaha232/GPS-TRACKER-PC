@@ -53,6 +53,21 @@ public class UpdateInstallerTests : IDisposable
     }
 
     [Fact]
+    public void OldFileKeepsSevenDaysFromInstallEvenWhenCurrentExeIsOld()
+    {
+        // 目前的 EXE 是 30 天前安裝的；換下來的 .old 要從這次安裝起算 7 天，不能沿用舊時間。
+        File.SetLastWriteTimeUtc(_currentExe, DateTime.UtcNow.AddDays(-30));
+
+        var result = UpdateInstaller.Apply(_downloaded, _currentExe, () => { });
+        Assert.True(result.Success, result.ErrorMessage);
+
+        UpdateInstaller.CleanupOldVersion(_currentExe);
+
+        Assert.True(File.Exists(_currentExe + ".old"));
+        Assert.True(DateTime.UtcNow - File.GetLastWriteTimeUtc(_currentExe + ".old") < TimeSpan.FromMinutes(5));
+    }
+
+    [Fact]
     public void NonExeDownloadIsRejectedWithoutChangingAnything()
     {
         var zipPath = Path.Combine(_root, "update.zip");

@@ -174,29 +174,39 @@ jobs:
           if ($isBeta) { $title += "（測試版）" }
           $notesFile = "$env:GITHUB_WORKSPACE\release-notes.md"
 
+          $assets = @(
+            "publish\GpsTrackerPc.exe",
+            "GpsTrackerPc.exe.sha256",
+            "GpsTrackerPc-win-x64.zip",
+            "GpsTrackerPc-win-x64.zip.sha256.txt"
+          )
+
           gh release view $tag 2>$null
           if ($LASTEXITCODE -ne 0) {
+            # 第一次發佈：建立時一起附上資產，沒有舊版本可被誤裝。
             if ($isBeta) {
-              gh release create $tag --title $title --notes-file $notesFile --target $env:GITHUB_SHA --prerelease
+              gh release create $tag @assets --title $title --notes-file $notesFile --target $env:GITHUB_SHA --prerelease
             } else {
-              gh release create $tag --title $title --notes-file $notesFile --target $env:GITHUB_SHA --latest
+              gh release create $tag @assets --title $title --notes-file $notesFile --target $env:GITHUB_SHA --latest
             }
+            if ($LASTEXITCODE -ne 0) { throw "建立 Release 失敗" }
           } else {
+            # 用戶端從 Release 標題判斷版本，所以要先上傳新檔、最後才改標題。
+            # 若先改標題，上傳期間檢查更新的用戶端會看到新版號，卻下載到舊 EXE 與舊檢查碼；
+            # 兩者雜湊相符，就會把舊版當成新版安裝。上傳期間標題仍是舊版號，用戶端不會更新。
+
+            # 舊版用戶端會抓「第一個 .sha256」當成 EXE 檢查碼；同時存在 ZIP 的
+            # .sha256 時會拿錯雜湊。改上傳 .sha256.txt，舊的 ZIP .sha256 直接刪掉。
+            gh release delete-asset $tag "GpsTrackerPc-win-x64.zip.sha256" --yes 2>$null
+            $global:LASTEXITCODE = 0
+
+            gh release upload $tag @assets --clobber
+            if ($LASTEXITCODE -ne 0) { throw "上傳 Release 資產失敗；標題維持舊版號，用戶端不會更新" }
+
             if ($isBeta) {
               gh release edit $tag --title $title --notes-file $notesFile --prerelease
             } else {
               gh release edit $tag --title $title --notes-file $notesFile --latest
             }
+            if ($LASTEXITCODE -ne 0) { throw "更新 Release 標題失敗" }
           }
-
-          # 舊版用戶端會抓「第一個 .sha256」當成 EXE 檢查碼；同時存在 ZIP 的
-          # .sha256 時會拿錯雜湊。改上傳 .sha256.txt，舊的 ZIP .sha256 直接刪掉。
-          gh release delete-asset $tag "GpsTrackerPc-win-x64.zip.sha256" --yes 2>$null
-          $global:LASTEXITCODE = 0
-
-          gh release upload $tag `
-            "publish\GpsTrackerPc.exe" `
-            "GpsTrackerPc.exe.sha256" `
-            "GpsTrackerPc-win-x64.zip" `
-            "GpsTrackerPc-win-x64.zip.sha256.txt" `
-            --clobber

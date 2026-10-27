@@ -7,3 +7,8 @@ publish/
 GpsTrackerPc-win-x64.zip
 GpsTrackerPc-win-x64/
 release-notes.md
+# 發佈時產生的檢查碼（Release 資產，不進版控）
+*.sha256
+*.sha256.txt
+# 本機整理用的程式碼匯出
+全部程式碼.txt

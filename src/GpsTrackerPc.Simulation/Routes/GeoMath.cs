@@ -16,6 +16,8 @@ public static class GeoMath
         var a = Math.Sin(latitudeDelta / 2) * Math.Sin(latitudeDelta / 2) +
             Math.Cos(startLatitude) * Math.Cos(endLatitude) *
             Math.Sin(longitudeDelta / 2) * Math.Sin(longitudeDelta / 2);
+        // 接近對蹠點時浮點誤差可能讓 a 略大於 1，Sqrt(1 - a) 會變成 NaN。
+        a = Math.Clamp(a, 0.0, 1.0);
         return EarthRadiusMeters * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
     }
 
