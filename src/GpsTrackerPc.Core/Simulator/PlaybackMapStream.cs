@@ -33,8 +33,14 @@ public sealed record PlaybackMapFrame(
 /// </summary>
 public sealed class PlaybackMapStream
 {
+    /// <summary>抽稀後較舊段落保留的點數；留出空間，避免每加一點就重新抽稀一次。</summary>
+    private const int OlderPointsAfterCompact = PlaybackMapPolicy.MaxDisplayPoints / 2;
+
+    /// <summary>完整的顯示取樣（只做去重與分段），抽稀一律從這裡重新計算。</summary>
+    private readonly List<List<PlaybackSample>> _raw = new();
     private readonly List<List<PlaybackSample>> _segments = new();
     private readonly List<PlaybackSample> _pending = new();
+    private int _rawCount;
     private int _displayCount;
 
     public int DisplayPointCount => _displayCount;
@@ -43,20 +49,33 @@ public sealed class PlaybackMapStream
     {
         ArgumentNullException.ThrowIfNull(sample);
 
-        // 停留點或暫停時位置不變，不要一直往顯示軌跡加同一個點。
-        if (_segments.Count > 0 &&
-            _segments[^1].Count > 0 &&
-            _segments[^1][^1].Coordinates == sample.Coordinates)
+        if (_raw.Count > 0 && _raw[^1].Count > 0)
         {
-            return;
+            var last = _raw[^1][^1];
+
+            // 時間沒有往前的取樣（例如同一批取樣被重送）不能接在後面，
+            // 否則會從目前位置畫一條直線回到較早的位置。
+            if (sample.ElapsedSeconds <= last.ElapsedSeconds)
+            {
+                return;
+            }
+
+            // 停留點或暫停時位置不變，不要一直往顯示軌跡加同一個點。
+            if (last.Coordinates == sample.Coordinates)
+            {
+                return;
+            }
         }
 
-        if (_segments.Count == 0 ||
-            sample.ElapsedSeconds - _segments[^1][^1].ElapsedSeconds > PlaybackMapPolicy.TrailGapSeconds)
+        if (_raw.Count == 0 ||
+            sample.ElapsedSeconds - _raw[^1][^1].ElapsedSeconds > PlaybackMapPolicy.TrailGapSeconds)
         {
+            _raw.Add(new List<PlaybackSample>());
             _segments.Add(new List<PlaybackSample>());
         }
 
+        _raw[^1].Add(sample);
+        _rawCount++;
         _segments[^1].Add(sample);
         _pending.Add(sample);
         _displayCount++;
@@ -85,90 +104,71 @@ public sealed class PlaybackMapStream
     }
 
     /// <summary>
-    /// 保留最新 <see cref="PlaybackMapPolicy.RecentPointsToKeep"/> 點，較舊的段落用固定間隔抽稀。
-    /// 只改顯示用資料，不動播放取樣。
+    /// 保留最新 <see cref="PlaybackMapPolicy.RecentPointsToKeep"/> 點，較舊的部分從完整取樣用固定間隔重新抽稀。
+    /// 不能拿上一次抽稀的結果再抽稀：那樣舊段落每次都會再減半，播放越久越稀，
+    /// 最後只剩幾個點，地圖上就畫成橫跨整條路線的直線。只改顯示用資料，不動播放取樣。
     /// </summary>
     private void Compact()
     {
-        var recent = new List<PlaybackSample>();
-        while (_segments.Count > 0 && recent.Count < PlaybackMapPolicy.RecentPointsToKeep)
+        var recentStart = Math.Max(0, _rawCount - PlaybackMapPolicy.RecentPointsToKeep);
+        var stride = Math.Max(1, (int)Math.Ceiling(recentStart / (double)OlderPointsAfterCompact));
+
+        List<List<PlaybackSample>> compacted;
+        while (true)
         {
-            var last = _segments[^1];
-            var take = Math.Min(PlaybackMapPolicy.RecentPointsToKeep - recent.Count, last.Count);
-            recent.InsertRange(0, last.Skip(last.Count - take));
-            if (take == last.Count)
+            compacted = Thin(recentStart, stride);
+            var count = compacted.Sum(segment => segment.Count);
+            if (count <= PlaybackMapPolicy.MaxDisplayPoints || stride >= recentStart)
             {
-                _segments.RemoveAt(_segments.Count - 1);
+                break;
             }
-            else
-            {
-                last.RemoveRange(last.Count - take, take);
-            }
+
+            // 中斷段落很多時，每段的頭尾都要保留，可能超過上限；加大間隔再算一次。
+            stride *= 2;
         }
 
-        var budget = Math.Max(1, PlaybackMapPolicy.MaxDisplayPoints - recent.Count);
-        var olderTotal = _segments.Sum(segment => segment.Count);
-        var stride = Math.Max(1, (int)Math.Ceiling(olderTotal / (double)budget));
-
-        var compacted = new List<List<PlaybackSample>>();
-        foreach (var segment in _segments)
+        // 段落多到連頭尾都放不下：從最舊的段落開始捨棄，讓畫面點數維持在上限內。
+        var total = compacted.Sum(segment => segment.Count);
+        while (total > PlaybackMapPolicy.MaxDisplayPoints && compacted.Count > 1)
         {
-            if (segment.Count == 0)
-            {
-                continue;
-            }
-
-            var reduced = new List<PlaybackSample>();
-            for (var index = 0; index < segment.Count; index += stride)
-            {
-                reduced.Add(segment[index]);
-            }
-
-            if (reduced.Count == 0 || !ReferenceEquals(reduced[^1], segment[^1]))
-            {
-                reduced.Add(segment[^1]);
-            }
-
-            compacted.Add(reduced);
-        }
-
-        if (recent.Count > 0)
-        {
-            compacted.Add(recent);
+            total -= compacted[0].Count;
+            compacted.RemoveAt(0);
         }
 
         _segments.Clear();
         _segments.AddRange(compacted);
-        _displayCount = _segments.Sum(segment => segment.Count);
+        _displayCount = total;
+    }
 
-        // 多個中斷段落各自補上尾點時，可能比上限多幾個；從最舊的段落移除多餘的點。
-        while (_displayCount > PlaybackMapPolicy.MaxDisplayPoints && _segments.Count > 0)
+    /// <summary>
+    /// 依全域索引抽稀：索引在 <paramref name="recentStart"/> 之後的全部保留，
+    /// 之前的每 <paramref name="stride"/> 點留一點，並保留每段頭尾與接到最新部分的那一點，線條才不會斷開或走捷徑。
+    /// </summary>
+    private List<List<PlaybackSample>> Thin(int recentStart, int stride)
+    {
+        var result = new List<List<PlaybackSample>>(_raw.Count);
+        var globalIndex = 0;
+        foreach (var segment in _raw)
         {
-            var removed = false;
-            for (var segmentIndex = 0; segmentIndex < _segments.Count; segmentIndex++)
+            var reduced = new List<PlaybackSample>();
+            for (var index = 0; index < segment.Count; index++, globalIndex++)
             {
-                var segment = _segments[segmentIndex];
-                if (segment.Count > 2)
+                if (globalIndex >= recentStart ||
+                    globalIndex % stride == 0 ||
+                    index == 0 ||
+                    index == segment.Count - 1 ||
+                    globalIndex == recentStart - 1)
                 {
-                    segment.RemoveAt(1);
-                    _displayCount--;
-                    removed = true;
-                    break;
-                }
-
-                if (segment.Count == 2 && _segments.Count > 1)
-                {
-                    _segments.RemoveAt(segmentIndex);
-                    _displayCount -= 2;
-                    removed = true;
-                    break;
+                    reduced.Add(segment[index]);
                 }
             }
 
-            if (!removed)
+            if (reduced.Count > 0)
             {
-                break;
+                result.Add(reduced);
             }
         }
+
+        return result;
     }
 }

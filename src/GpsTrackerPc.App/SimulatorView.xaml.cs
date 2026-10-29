@@ -217,12 +217,15 @@ public partial class SimulatorView : UserControl
         _playback = controller;
         _lastPlayback = null;
         _lastPlaybackCoordinate = controller.Current?.Coordinates;
-        _sentSampleCount = 0;
         _mapStream = new PlaybackMapStream();
         foreach (var sample in controller.Samples)
         {
             _mapStream.Append(sample);
         }
+
+        // 已有的取樣點已經放進顯示軌跡；計數要跟著前進，否則下一次更新會把它們從頭再送一次，
+        // 地圖上就會從暫停點畫一條直線回到起點。
+        _sentSampleCount = controller.Samples.Count;
 
         // 地圖可能還沒載入完成，等網頁回報 ready 再送播放資料。
         for (var attempt = 0; attempt < 100 && !_webReady && !_closing; attempt++)
