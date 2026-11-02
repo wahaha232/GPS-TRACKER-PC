@@ -5,6 +5,7 @@ using System.Net.NetworkInformation;
 using System.Windows;
 using System.Windows.Threading;
 using GpsTrackerPc.App.Infrastructure;
+using GpsTrackerPc.Core.Appearance;
 using GpsTrackerPc.Core.Data;
 using GpsTrackerPc.Core.Gpx;
 using GpsTrackerPc.Core.Security;
@@ -30,9 +31,11 @@ public partial class MainWindow : Window
 
     // 必須在頁面任何 script 執行前注入。
     // 1. 關閉桌面版沒有的功能（拍照／步數／分享）。
-    // 2. 把網頁的 data/ 導到另一個虛擬主機，直接讀本機同步下來的資料，不改網頁原始碼。
+    // 2. 主題由程式設定決定（WebView2 的 prefers-color-scheme），網頁隱藏自己的主題切換鈕。
+    // 3. 把網頁的 data/ 導到另一個虛擬主機，直接讀本機同步下來的資料，不改網頁原始碼。
     private const string DesktopBootstrapScript = """
         window.GT_FEATURES = Object.freeze({ photos: false, steps: false, share: false });
+        window.GT_THEME_HOST = true;
         (function () {
           var dataBase = "https://gpstracker-data.local/";
           var current;
@@ -209,7 +212,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            Browser.DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x0B, 0x12, 0x20);
+            ApplyWebBackground(ThemeManager.Current);
 
             await Browser.EnsureCoreWebView2Async();
             if (_closing)
@@ -218,6 +221,8 @@ public partial class MainWindow : Window
             }
 
             var core = Browser.CoreWebView2;
+            ApplyWebTheme(ThemeManager.Current);
+            ThemeManager.Changed += ThemeManager_Changed;
 
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.AreDefaultContextMenusEnabled = true;
@@ -1593,6 +1598,47 @@ public partial class MainWindow : Window
 
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
 
+    private void ThemeManager_Changed(AppThemePreference preference)
+    {
+        if (_closing)
+        {
+            return;
+        }
+
+        ApplyWebTheme(preference);
+    }
+
+    // 紀錄網頁在桌面版固定「跟隨系統」：設定 WebView2 的 prefers-color-scheme，網頁會即時跟著切換。
+    // 同一個 WebView2 設定檔共用，模擬與好友地圖不使用這個媒體查詢，不受影響。
+    private void ApplyWebTheme(AppThemePreference preference)
+    {
+        ApplyWebBackground(preference);
+        try
+        {
+            if (Browser.CoreWebView2 is { } core)
+            {
+                core.Profile.PreferredColorScheme = preference switch
+                {
+                    AppThemePreference.Light => CoreWebView2PreferredColorScheme.Light,
+                    AppThemePreference.Dark => CoreWebView2PreferredColorScheme.Dark,
+                    _ => CoreWebView2PreferredColorScheme.Auto,
+                };
+            }
+        }
+        catch (Exception)
+        {
+            // WebView2 關閉中；下次啟動會再套用。
+        }
+    }
+
+    // 頁面載入前的底色，避免淺色主題先閃一下深色。
+    private void ApplyWebBackground(AppThemePreference preference)
+    {
+        Browser.DefaultBackgroundColor = ThemeManager.IsLight(preference)
+            ? System.Drawing.Color.FromArgb(0xF4, 0xF7, 0xFB)
+            : System.Drawing.Color.FromArgb(0x0B, 0x12, 0x20);
+    }
+
     private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         if (_closing)
@@ -1635,6 +1681,7 @@ public partial class MainWindow : Window
         _powerTimer.Stop();
         _updateCheckTimer.Stop();
         Microsoft.Win32.SystemEvents.PowerModeChanged -= PowerMode_Changed;
+        ThemeManager.Changed -= ThemeManager_Changed;
         _downloadRetryTimer?.Stop();
         _backgroundDownloadCts?.Cancel();
         NetworkChange.NetworkAvailabilityChanged -= NetworkAvailability_Changed;

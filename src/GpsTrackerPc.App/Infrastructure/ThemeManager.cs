@@ -32,6 +32,17 @@ internal static class ThemeCatalog
 /// <summary>把主題色套到 Application.Resources；XAML 使用 DynamicResource，切換時立即生效。</summary>
 internal static class ThemeManager
 {
+    /// <summary>目前套用的選擇（淺色／深色／系統）；紀錄網頁依此設定 WebView2 的配色。</summary>
+    public static AppThemePreference Current { get; private set; } = AppThemePreference.System;
+
+    /// <summary>主題套用後觸發（UI 執行緒）。</summary>
+    public static event Action<AppThemePreference>? Changed;
+
+    /// <summary>實際顯示的是否為淺色（系統預設時依 Windows 的應用程式主題）。</summary>
+    public static bool IsLight(AppThemePreference preference) =>
+        preference == AppThemePreference.Light ||
+        (preference == AppThemePreference.System && SystemUsesLightTheme());
+
     public static void Apply(AppThemePreference preference)
     {
         if (Application.Current == null)
@@ -39,14 +50,14 @@ internal static class ThemeManager
             return;
         }
 
-        var effective = preference == AppThemePreference.System
-            ? (SystemUsesLightTheme() ? AppThemePreference.Light : AppThemePreference.Dark)
-            : preference;
-        var colors = effective == AppThemePreference.Light ? LightColors : DarkColors;
+        var colors = IsLight(preference) ? LightColors : DarkColors;
         foreach (var pair in colors)
         {
             Application.Current.Resources[pair.Key] = new SolidColorBrush(ParseColor(pair.Value));
         }
+
+        Current = preference;
+        Changed?.Invoke(preference);
     }
 
     private static bool SystemUsesLightTheme()
