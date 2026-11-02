@@ -43,6 +43,35 @@ public class UpdateCheckStoreTests : IDisposable
     }
 
     [Fact]
+    public void CustomIntervalControlsWhenToCheckAgain()
+    {
+        var store = new UpdateCheckStore(_path);
+        var now = new DateTimeOffset(2026, 11, 2, 8, 0, 0, TimeSpan.Zero);
+        store.SetCheckInterval(60);
+        store.MarkChecked(now);
+
+        Assert.Equal(60, store.Load().CheckIntervalMinutes);
+        Assert.False(store.ShouldAutoCheck(now.AddMinutes(59)));
+        Assert.True(store.ShouldAutoCheck(now.AddMinutes(60)));
+    }
+
+    [Fact]
+    public void IntervalIsClampedAndOldFilesUseOneDay()
+    {
+        var store = new UpdateCheckStore(_path);
+
+        store.SetCheckInterval(1);
+        Assert.Equal(UpdateCheckStore.MinCheckIntervalMinutes, store.Load().CheckIntervalMinutes);
+
+        store.SetCheckInterval(100_000);
+        Assert.Equal(UpdateCheckStore.MaxCheckIntervalMinutes, store.Load().CheckIntervalMinutes);
+
+        // 舊版設定檔沒有 checkIntervalMinutes。
+        File.WriteAllText(_path, """{"autoCheckEnabled":true,"lastCheckMs":null}""");
+        Assert.Equal(24 * 60, store.Load().CheckIntervalMinutes);
+    }
+
+    [Fact]
     public void DisabledAutoCheckNeverChecks()
     {
         var store = new UpdateCheckStore(_path);

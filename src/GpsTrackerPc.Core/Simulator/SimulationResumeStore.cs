@@ -4,8 +4,15 @@ using GpsTrackerPc.Core.Util;
 
 namespace GpsTrackerPc.Core.Simulator;
 
+/// <summary>暫存檔是在什麼情況下寫入的；舊版暫存檔沒有這個欄位，視為更新重啟。</summary>
+public enum SimulationPauseReason
+{
+    Update,
+    LowBattery,
+}
+
 /// <summary>
-/// 重啟程式前暫存的模擬狀態：路線、播放位置與已產生的取樣點。
+/// 重啟程式前（或低電量自動暫停時）暫存的模擬狀態：路線、播放位置與已產生的取樣點。
 /// 使用者下次啟動時可以選擇繼續、存檔後結束或放棄。
 /// </summary>
 public sealed record SimulationResumeSnapshot(
@@ -19,7 +26,8 @@ public sealed record SimulationResumeSnapshot(
     long SavedAtMs,
     string? RouteName = null,
     string? SelectedWaypointId = null,
-    bool HasUnsavedRouteChanges = false);
+    bool HasUnsavedRouteChanges = false,
+    SimulationPauseReason PauseReason = SimulationPauseReason.Update);
 
 /// <summary>把重啟前的模擬狀態存在 %LOCALAPPDATA%\GpsTrackerPc\restart-session.json。</summary>
 public sealed class SimulationResumeStore

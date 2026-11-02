@@ -27,11 +27,19 @@ public sealed record UpdateCheckState(
     bool AutoUploadPendingRecords = true,
     UpdateChannel Channel = UpdateChannel.Stable,
     bool DownloadOnlyOnUnmetered = true,
-    int AutoUploadDailyLimit = 20);
+    int AutoUploadDailyLimit = 20,
+    int CheckIntervalMinutes = UpdateCheckStore.DefaultCheckIntervalMinutes);
 
-/// <summary>記錄自動檢查更新、背景下載、安裝方式與上次檢查時間；啟動時一天最多檢查一次。</summary>
+/// <summary>
+/// 記錄自動檢查更新、背景下載、安裝方式與上次檢查時間；
+/// 啟動時與程式開著的期間，距離上次檢查超過設定的間隔（預設 1 天）才會再檢查。
+/// </summary>
 public sealed class UpdateCheckStore
 {
+    public const int DefaultCheckIntervalMinutes = 24 * 60;
+    public const int MinCheckIntervalMinutes = 15;
+    public const int MaxCheckIntervalMinutes = 7 * 24 * 60;
+
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -68,7 +76,8 @@ public sealed class UpdateCheckStore
                 stored?.AutoUploadPendingRecords ?? true,
                 stored?.Channel ?? UpdateChannel.Stable,
                 stored?.DownloadOnlyOnUnmetered ?? true,
-                Math.Clamp(stored?.AutoUploadDailyLimit ?? 20, 1, 200));
+                Math.Clamp(stored?.AutoUploadDailyLimit ?? 20, 1, 200),
+                ClampCheckInterval(stored?.CheckIntervalMinutes ?? DefaultCheckIntervalMinutes));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -90,8 +99,11 @@ public sealed class UpdateCheckStore
         }
 
         var elapsed = now.ToUnixTimeMilliseconds() - lastCheckMs;
-        return elapsed >= TimeSpan.FromDays(1).TotalMilliseconds;
+        return elapsed >= TimeSpan.FromMinutes(state.CheckIntervalMinutes).TotalMilliseconds;
     }
+
+    public static int ClampCheckInterval(int minutes) =>
+        Math.Clamp(minutes, MinCheckIntervalMinutes, MaxCheckIntervalMinutes);
 
     public void MarkChecked(DateTimeOffset now) =>
         Save(Load() with { LastCheckMs = now.ToUnixTimeMilliseconds() });
@@ -114,6 +126,9 @@ public sealed class UpdateCheckStore
     public void SetAutoUploadDailyLimit(int limit) =>
         Save(Load() with { AutoUploadDailyLimit = Math.Clamp(limit, 1, 200) });
 
+    public void SetCheckInterval(int minutes) =>
+        Save(Load() with { CheckIntervalMinutes = ClampCheckInterval(minutes) });
+
     public void Save(UpdateCheckState state)
     {
         var json = JsonSerializer.Serialize(
@@ -127,6 +142,7 @@ public sealed class UpdateCheckStore
                 Channel = state.Channel,
                 DownloadOnlyOnUnmetered = state.DownloadOnlyOnUnmetered,
                 AutoUploadDailyLimit = state.AutoUploadDailyLimit,
+                CheckIntervalMinutes = ClampCheckInterval(state.CheckIntervalMinutes),
             },
             SerializerOptions);
         AtomicFile.WriteAllBytes(_filePath, Encoding.UTF8.GetBytes(json));
@@ -149,5 +165,7 @@ public sealed class UpdateCheckStore
         public bool? DownloadOnlyOnUnmetered { get; set; }
 
         public int? AutoUploadDailyLimit { get; set; }
+
+        public int? CheckIntervalMinutes { get; set; }
     }
 }

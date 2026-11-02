@@ -60,9 +60,19 @@ public static class BasemapCatalog
         ?? Simple;
 }
 
-public sealed record SimulatorMapSettings(BasemapKind Basemap, bool Follow);
+/// <summary>播放進度要顯示已完成還是剩下的百分比。</summary>
+public enum PlaybackProgressDisplay
+{
+    Completed,
+    Remaining,
+}
 
-/// <summary>記住模擬視窗的底圖與跟隨模式；存在 %LOCALAPPDATA%\GpsTrackerPc\map-settings.json。</summary>
+public sealed record SimulatorMapSettings(
+    BasemapKind Basemap,
+    bool Follow,
+    PlaybackProgressDisplay ProgressDisplay = PlaybackProgressDisplay.Completed);
+
+/// <summary>記住模擬視窗的底圖、跟隨模式與進度顯示方式；存在 %LOCALAPPDATA%\GpsTrackerPc\map-settings.json。</summary>
 public sealed class MapSettingsStore
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
@@ -95,7 +105,10 @@ public sealed class MapSettingsStore
                 SerializerOptions);
             return new SimulatorMapSettings(
                 BasemapCatalog.Get(settings?.Basemap).Kind,
-                settings?.Follow ?? true);
+                settings?.Follow ?? true,
+                string.Equals(settings?.ProgressDisplay, "remaining", StringComparison.OrdinalIgnoreCase)
+                    ? PlaybackProgressDisplay.Remaining
+                    : PlaybackProgressDisplay.Completed);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -112,6 +125,9 @@ public sealed class MapSettingsStore
             {
                 Basemap = option.Value,
                 Follow = settings.Follow,
+                ProgressDisplay = settings.ProgressDisplay == PlaybackProgressDisplay.Remaining
+                    ? "remaining"
+                    : "completed",
             },
             SerializerOptions);
         AtomicFile.WriteAllBytes(_filePath, Encoding.UTF8.GetBytes(json));
@@ -122,5 +138,7 @@ public sealed class MapSettingsStore
         public string? Basemap { get; set; }
 
         public bool? Follow { get; set; }
+
+        public string? ProgressDisplay { get; set; }
     }
 }

@@ -56,6 +56,9 @@ internal static class AppPaths
 
     public static string StorageSettingsFile => Path.Combine(Root, "storage.json");
 
+    /// <summary>低電量自動暫停模擬的設定。</summary>
+    public static string PowerSettingsFile => Path.Combine(Root, "power.json");
+
     /// <summary>好友／群組清單、分享開關與固定裝置識別碼。</summary>
     public static string SocialFile => Path.Combine(Root, "social.json");
 

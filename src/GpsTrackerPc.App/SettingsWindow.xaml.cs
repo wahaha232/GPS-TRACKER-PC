@@ -21,6 +21,7 @@ public partial class SettingsWindow : Window
     private readonly ThemeSettingsStore _themeStore;
     private readonly TraySettingsStore _trayStore;
     private readonly StorageSettingsStore _storageStore;
+    private readonly PowerSettingsStore _powerStore;
     private readonly ResumePreferenceStore _resumePreference;
     private readonly Func<Task> _checkUpdates;
     private readonly Action _openPendingRecords;
@@ -42,6 +43,7 @@ public partial class SettingsWindow : Window
         _themeStore = new ThemeSettingsStore(AppPaths.ThemeFile);
         _trayStore = new TraySettingsStore(AppPaths.TraySettingsFile);
         _storageStore = new StorageSettingsStore(AppPaths.StorageSettingsFile);
+        _powerStore = new PowerSettingsStore(AppPaths.PowerSettingsFile);
         _resumePreference = new ResumePreferenceStore(AppPaths.ResumePreferenceFile);
         _checkUpdates = checkUpdates;
         _openPendingRecords = openPendingRecords;
@@ -52,6 +54,8 @@ public partial class SettingsWindow : Window
         _updatingUi = true;
         var updateState = _updateCheckStore.Load();
         AutoCheckUpdatesCheck.IsChecked = updateState.AutoCheckEnabled;
+        SelectCheckInterval(updateState.CheckIntervalMinutes);
+        CheckIntervalBox.IsEnabled = updateState.AutoCheckEnabled;
         BackgroundDownloadCheck.IsChecked = updateState.BackgroundDownloadEnabled;
         AutoInstallUpdateCheck.IsChecked = updateState.InstallMode == UpdateInstallMode.Automatic;
         AutoInstallUpdateCheck.IsEnabled = updateState.BackgroundDownloadEnabled;
@@ -60,6 +64,7 @@ public partial class SettingsWindow : Window
         UnmeteredOnlyCheck.IsChecked = updateState.DownloadOnlyOnUnmetered;
         DailyUploadLimitBox.Text = updateState.AutoUploadDailyLimit.ToString();
         MinimizeToTrayCheck.IsChecked = _trayStore.Load().MinimizeToTray;
+        LoadPowerSettings();
         ThemeBox.ItemsSource = ThemeCatalog.Options;
         ThemeBox.SelectedValue = _themeStore.Load();
         _updatingUi = false;
@@ -97,7 +102,9 @@ public partial class SettingsWindow : Window
                     : UpdateChannel.Stable);
             _updateCheckStore.SetDownloadOnlyOnUnmetered(UnmeteredOnlyCheck.IsChecked == true);
             _updateCheckStore.SetAutoUploadDailyLimit(ParseDailyLimit());
+            _updateCheckStore.SetCheckInterval(SelectedCheckInterval());
             _trayStore.SetMinimizeToTray(MinimizeToTrayCheck.IsChecked == true);
+            _powerStore.Save(ReadPowerSettings());
             DeviceNameStatusText.Text = "已套用設定。";
         }
         catch (Exception ex)
@@ -176,9 +183,45 @@ public partial class SettingsWindow : Window
             return;
         }
 
+        CheckIntervalBox.IsEnabled = AutoCheckUpdatesCheck.IsChecked == true;
         try
         {
             _updateCheckStore.SetAutoCheck(AutoCheckUpdatesCheck.IsChecked == true);
+            RefreshLastCheck();
+        }
+        catch (Exception ex)
+        {
+            ShowUpdateSettingsError(ex);
+        }
+    }
+
+    private void SelectCheckInterval(int minutes)
+    {
+        var value = minutes.ToString();
+        CheckIntervalBox.SelectedValue = value;
+        if (CheckIntervalBox.SelectedIndex < 0)
+        {
+            // 手動改過設定檔、間隔不在選單裡時，補一個選項顯示目前的值。
+            CheckIntervalBox.Items.Add(new ComboBoxItem { Content = $"每 {minutes} 分鐘", Tag = value });
+            CheckIntervalBox.SelectedValue = value;
+        }
+    }
+
+    private int SelectedCheckInterval() =>
+        int.TryParse(CheckIntervalBox.SelectedValue?.ToString(), out var minutes)
+            ? minutes
+            : UpdateCheckStore.DefaultCheckIntervalMinutes;
+
+    private void CheckInterval_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingUi)
+        {
+            return;
+        }
+
+        try
+        {
+            _updateCheckStore.SetCheckInterval(SelectedCheckInterval());
             RefreshLastCheck();
         }
         catch (Exception ex)
@@ -365,6 +408,66 @@ public partial class SettingsWindow : Window
             MessageBoxImage.Warning);
     }
 
+    private void LoadPowerSettings()
+    {
+        var power = _powerStore.Load();
+        PauseOnLowBatteryCheck.IsChecked = power.PauseOnLowBattery;
+        BatteryThresholdBox.SelectedValue = power.ThresholdPercent.ToString();
+        if (BatteryThresholdBox.SelectedIndex < 0)
+        {
+            // 手動改過設定檔、門檻不在選單裡時，補一個選項顯示目前的值。
+            BatteryThresholdBox.Items.Add(new ComboBoxItem
+            {
+                Content = $"{power.ThresholdPercent}%",
+                Tag = power.ThresholdPercent.ToString(),
+            });
+            BatteryThresholdBox.SelectedValue = power.ThresholdPercent.ToString();
+        }
+
+        BatteryResumeModeBox.SelectedValue = power.ResumeMode.ToString();
+        BatteryThresholdBox.IsEnabled = power.PauseOnLowBattery;
+        BatteryResumeModeBox.IsEnabled = power.PauseOnLowBattery;
+    }
+
+    private PowerSettings ReadPowerSettings()
+    {
+        var threshold = int.TryParse(BatteryThresholdBox.SelectedValue?.ToString(), out var value)
+            ? value
+            : PowerSettings.DefaultThresholdPercent;
+        var resumeMode = string.Equals(
+            BatteryResumeModeBox.SelectedValue?.ToString(),
+            nameof(BatteryResumeMode.Automatic),
+            StringComparison.Ordinal)
+                ? BatteryResumeMode.Automatic
+                : BatteryResumeMode.Manual;
+        return new PowerSettings(PauseOnLowBatteryCheck.IsChecked == true, threshold, resumeMode);
+    }
+
+    private void PowerSettings_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_updatingUi)
+        {
+            return;
+        }
+
+        var enabled = PauseOnLowBatteryCheck.IsChecked == true;
+        BatteryThresholdBox.IsEnabled = enabled;
+        BatteryResumeModeBox.IsEnabled = enabled;
+        try
+        {
+            _powerStore.Save(ReadPowerSettings());
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                "儲存電量設定失敗：\n\n" + ex.Message,
+                "儲存失敗",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
     private void MinimizeToTray_Changed(object sender, RoutedEventArgs e)
     {
         if (_updatingUi)
@@ -404,7 +507,13 @@ public partial class SettingsWindow : Window
         LastCheckText.Text = state.LastCheckMs is { } lastCheckMs
             ? "最後檢查更新：" + DateTimeOffset.FromUnixTimeMilliseconds(lastCheckMs)
                 .ToLocalTime()
-                .ToString("yyyy/MM/dd HH:mm")
+                .ToString("yyyy/MM/dd HH:mm") +
+              (state.AutoCheckEnabled
+                  ? "｜下次自動檢查約 " + DateTimeOffset.FromUnixTimeMilliseconds(lastCheckMs)
+                      .AddMinutes(state.CheckIntervalMinutes)
+                      .ToLocalTime()
+                      .ToString("yyyy/MM/dd HH:mm")
+                  : string.Empty)
             : "最後檢查更新：尚未檢查";
     }
 

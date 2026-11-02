@@ -148,11 +148,27 @@
                  FontWeight="SemiBold"
                  Margin="0,16,0,0" />
       <CheckBox x:Name="AutoCheckUpdatesCheck"
-                Content="啟動時自動檢查更新（一天最多一次）"
+                Content="自動檢查更新（啟動時與程式開著期間，依下方間隔）"
                 Foreground="{DynamicResource AppText}"
                 Margin="0,8,0,0"
                 Checked="AutoCheckUpdates_Changed"
                 Unchecked="AutoCheckUpdates_Changed" />
+      <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+        <TextBlock Text="檢查間隔" Foreground="{DynamicResource AppText}" VerticalAlignment="Center" Margin="0,0,8,0" />
+        <ComboBox x:Name="CheckIntervalBox"
+                  Width="120"
+                  SelectedValuePath="Tag"
+                  SelectionChanged="CheckInterval_Changed">
+          <ComboBoxItem Content="每 15 分鐘" Tag="15" />
+          <ComboBoxItem Content="每 30 分鐘" Tag="30" />
+          <ComboBoxItem Content="每 1 小時" Tag="60" />
+          <ComboBoxItem Content="每 3 小時" Tag="180" />
+          <ComboBoxItem Content="每 6 小時" Tag="360" />
+          <ComboBoxItem Content="每 12 小時" Tag="720" />
+          <ComboBoxItem Content="每 1 天" Tag="1440" />
+          <ComboBoxItem Content="每 7 天" Tag="10080" />
+        </ComboBox>
+      </StackPanel>
       <CheckBox x:Name="BackgroundDownloadCheck"
                 Content="背景下載更新檔（下載完成後可在工具列安裝）"
                 Foreground="{DynamicResource AppText}"
@@ -207,6 +223,47 @@
                  FontSize="11"
                  TextWrapping="Wrap"
                  Margin="0,4,0,0" />
+
+      <Separator Background="{DynamicResource AppBorder}" Margin="0,16,0,0" />
+      <TextBlock Text="筆電電量"
+                 Foreground="{DynamicResource AppText}"
+                 FontSize="14"
+                 FontWeight="SemiBold"
+                 Margin="0,16,0,0" />
+      <CheckBox x:Name="PauseOnLowBatteryCheck"
+                Content="電量降到門檻以下（未接電源）時自動暫停模擬並寫入暫存檔"
+                Foreground="{DynamicResource AppText}"
+                Margin="0,8,0,0"
+                Checked="PowerSettings_Changed"
+                Unchecked="PowerSettings_Changed" />
+      <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+        <TextBlock Text="暫停門檻" Foreground="{DynamicResource AppText}" VerticalAlignment="Center" Margin="0,0,8,0" />
+        <ComboBox x:Name="BatteryThresholdBox"
+                  Width="80"
+                  SelectedValuePath="Tag"
+                  SelectionChanged="PowerSettings_Changed">
+          <ComboBoxItem Content="5%" Tag="5" />
+          <ComboBoxItem Content="10%" Tag="10" />
+          <ComboBoxItem Content="15%" Tag="15" />
+          <ComboBoxItem Content="20%" Tag="20" />
+          <ComboBoxItem Content="30%" Tag="30" />
+        </ComboBox>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+        <TextBlock Text="接上電源後" Foreground="{DynamicResource AppText}" VerticalAlignment="Center" Margin="0,0,8,0" />
+        <ComboBox x:Name="BatteryResumeModeBox"
+                  Width="200"
+                  SelectedValuePath="Tag"
+                  SelectionChanged="PowerSettings_Changed">
+          <ComboBoxItem Content="手動（按「繼續」才接續）" Tag="Manual" />
+          <ComboBoxItem Content="自動繼續模擬" Tag="Automatic" />
+        </ComboBox>
+      </StackPanel>
+      <TextBlock Text="每 30 秒與電源狀態變化時檢查一次。暫停時會寫入暫存檔，電量耗盡關機後重新開啟程式，可以選擇從暫停點繼續、存檔或放棄。桌機（沒有電池）不受影響。"
+                 Foreground="{DynamicResource AppTextMuted}"
+                 FontSize="12"
+                 TextWrapping="Wrap"
+                 Margin="0,6,0,0" />
 
       <Separator Background="{DynamicResource AppBorder}" Margin="0,16,0,0" />
       <TextBlock Text="視窗行為"

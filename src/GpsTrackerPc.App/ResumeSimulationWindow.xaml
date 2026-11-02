@@ -8,7 +8,8 @@
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource AppBackground}">
   <StackPanel Margin="22,18">
-    <TextBlock Text="上次重新啟動前，模擬路線已暫停"
+    <TextBlock x:Name="HeadingText"
+               Text="上次重新啟動前，模擬路線已暫停"
                Foreground="{DynamicResource AppText}"
                FontSize="17"
                FontWeight="SemiBold" />

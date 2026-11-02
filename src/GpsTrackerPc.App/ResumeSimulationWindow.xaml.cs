@@ -13,7 +13,7 @@ public enum ResumeSimulationChoice
 
 public sealed record ResumePromptResult(ResumeSimulationChoice Choice, bool Remember);
 
-/// <summary>更新重啟後詢問如何處理暫停中的模擬路線。</summary>
+/// <summary>更新重啟或低電量暫停後重新開啟時，詢問如何處理暫停中的模擬路線。</summary>
 public partial class ResumeSimulationWindow : Window
 {
     public ResumeSimulationWindow(SimulationResumeSnapshot snapshot)
@@ -22,8 +22,11 @@ public partial class ResumeSimulationWindow : Window
         ArgumentNullException.ThrowIfNull(snapshot);
         var elapsed = TimeSpan.FromSeconds(Math.Max(0, snapshot.ElapsedSeconds));
         var distance = snapshot.DistanceMeters / 1000.0;
+        var lowBattery = snapshot.PauseReason == SimulationPauseReason.LowBattery;
         var title = snapshot.Samples.Count >= 2
-            ? "上次重新啟動前，模擬路線已暫停"
+            ? lowBattery
+                ? "上次因筆電電量不足，模擬路線已暫停"
+                : "上次重新啟動前，模擬路線已暫停"
             : "上次重新啟動前有未儲存的路線草稿";
         SummaryText.Text = snapshot.Samples.Count >= 2
             ? $"暫停位置：{elapsed:hh\\:mm\\:ss}\n" +
@@ -33,6 +36,7 @@ public partial class ResumeSimulationWindow : Window
               "這條路線還沒存檔，也還沒有可上傳的取樣點。\n\n" +
               "請選擇繼續編輯、存到路線庫後結束，或直接放棄。";
         Title = title;
+        HeadingText.Text = title;
     }
 
     public ResumeSimulationChoice Choice { get; private set; } = ResumeSimulationChoice.Discard;

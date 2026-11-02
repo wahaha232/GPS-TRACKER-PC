@@ -35,6 +35,22 @@ public class SimulatorMapSettingsTests : IDisposable
 
         Assert.Equal(BasemapKind.Simple, settings.Basemap);
         Assert.True(settings.Follow);
+        Assert.Equal(PlaybackProgressDisplay.Completed, settings.ProgressDisplay);
+    }
+
+    [Fact]
+    public void SavesAndLoadsProgressDisplay()
+    {
+        var path = Path.Combine(_root, "map-settings.json");
+        var store = new MapSettingsStore(path);
+
+        store.Save(new SimulatorMapSettings(BasemapKind.Satellite, Follow: true, PlaybackProgressDisplay.Remaining));
+
+        Assert.Equal(PlaybackProgressDisplay.Remaining, new MapSettingsStore(path).Load().ProgressDisplay);
+
+        // 舊版設定檔沒有 progressDisplay，預設顯示完成百分比。
+        File.WriteAllText(path, """{"basemap":"nlsc","follow":false}""");
+        Assert.Equal(PlaybackProgressDisplay.Completed, new MapSettingsStore(path).Load().ProgressDisplay);
     }
 
     [Fact]

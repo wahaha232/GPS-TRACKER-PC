@@ -57,9 +57,39 @@ public class SimulationResumeStoreTests : IDisposable
         Assert.Equal(4, loaded.SpeedMultiplier);
         Assert.True(loaded.WasPlaying);
         Assert.Equal(2, loaded.Samples.Count);
+        Assert.Equal(SimulationPauseReason.Update, loaded.PauseReason);
 
         store.Clear();
         Assert.Null(store.Load());
+    }
+
+    [Fact]
+    public void KeepsLowBatteryPauseReasonAndOldFilesDefaultToUpdate()
+    {
+        var store = new SimulationResumeStore(_path);
+        var snapshot = new SimulationResumeSnapshot(
+            RouteJsonCodec.Encode(CreateRoute()),
+            30,
+            500,
+            1,
+            1,
+            false,
+            new[]
+            {
+                new PlaybackSample(new Coordinates(25.0, 121.0), 0, 10, false),
+                new PlaybackSample(new Coordinates(25.001, 121.0), 1, 10, false),
+            },
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            PauseReason: SimulationPauseReason.LowBattery);
+
+        store.Save(snapshot);
+        Assert.Equal(SimulationPauseReason.LowBattery, store.Load()!.PauseReason);
+
+        // v0.10 以前寫的暫存檔沒有 pauseReason。
+        var json = File.ReadAllText(_path);
+        File.WriteAllText(_path, json.Replace(",\"pauseReason\":1", string.Empty));
+        Assert.DoesNotContain("pauseReason", File.ReadAllText(_path));
+        Assert.Equal(SimulationPauseReason.Update, store.Load()!.PauseReason);
     }
 
     [Fact]

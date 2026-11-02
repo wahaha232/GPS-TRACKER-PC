@@ -308,18 +308,38 @@
                     Margin="8,0,0,0"
                     Click="UploadRecord_Click" />
           </WrapPanel>
-          <ProgressBar x:Name="PlaybackProgress"
-                       Height="8"
-                       Minimum="0"
-                       Maximum="100"
-                       Value="0"
-                       Margin="0,8,0,0"
-                       Background="{DynamicResource AppBorder}"
-                       Foreground="{DynamicResource AppSuccess}" />
+          <Grid Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <ProgressBar x:Name="PlaybackProgress"
+                         Height="8"
+                         Minimum="0"
+                         Maximum="100"
+                         Value="0"
+                         VerticalAlignment="Center"
+                         Background="{DynamicResource AppBorder}"
+                         Foreground="{DynamicResource AppSuccess}" />
+            <Button x:Name="ProgressDisplayButton"
+                    Grid.Column="1"
+                    Content="完成 0.0%"
+                    MinWidth="88"
+                    Margin="8,0,0,0"
+                    Padding="6,1"
+                    FontSize="12"
+                    ToolTip="切換顯示已完成或剩下的百分比"
+                    Click="ProgressDisplay_Click" />
+          </Grid>
           <TextBlock x:Name="PlaybackOutageText"
                      Foreground="{DynamicResource AppDangerText}"
                      FontSize="12"
                      Margin="0,6,0,0" />
+          <TextBlock x:Name="BatteryPauseText"
+                     Foreground="{DynamicResource AppWarningText}"
+                     FontSize="12"
+                     TextWrapping="Wrap"
+                     Margin="0,4,0,0" />
           <TextBlock x:Name="NetworkOutageText"
                      Foreground="{DynamicResource AppWarningText}"
                      FontSize="12"

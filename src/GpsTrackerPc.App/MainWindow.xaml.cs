@@ -70,12 +70,19 @@ public partial class MainWindow : Window
     private readonly RouteLibraryStore _routeLibrary;
     private readonly DispatcherTimer _pendingUploadTimer;
     private readonly DispatcherTimer _networkTimer;
+    private readonly DispatcherTimer _powerTimer;
+    private readonly PowerSettingsStore _powerSettingsStore;
+    private readonly BatteryPausePolicy _batteryPausePolicy = new();
+    private PowerSettings _powerSettings;
     private readonly TraySettingsStore _traySettingsStore;
     private readonly TrayIconService _trayIcon;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _syncStateLock = new();
 
     private bool _startupUpdateCheckAttempted;
+    private bool _autoUpdateCheckRunning;
+    private string? _promptedUpdateVersion;
+    private readonly DispatcherTimer _updateCheckTimer;
     private bool _oldVersionCleaned;
     private bool _pageLoaded;
     private bool _navigationStarted;
@@ -130,6 +137,14 @@ public partial class MainWindow : Window
         _pendingUploadTimer.Tick += async (_, _) => await TryUploadPendingRecordsAsync();
         _networkTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
         _networkTimer.Tick += (_, _) => UpdateNetworkState();
+        _powerSettingsStore = new PowerSettingsStore(AppPaths.PowerSettingsFile);
+        _powerSettings = _powerSettingsStore.Load();
+        _powerTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        // 每 5 分鐘看一次是否超過設定的檢查間隔（最短 15 分鐘），真的到期才連線查詢。
+        _updateCheckTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(5) };
+        _updateCheckTimer.Tick += async (_, _) => await RunAutoUpdateCheckAsync();
+        _powerTimer.Tick += (_, _) => UpdatePowerState();
+        Microsoft.Win32.SystemEvents.PowerModeChanged += PowerMode_Changed;
         _isOnline = NetworkInterface.GetIsNetworkAvailable();
         NetworkChange.NetworkAvailabilityChanged += NetworkAvailability_Changed;
         _traySettingsStore = new TraySettingsStore(AppPaths.TraySettingsFile);
@@ -238,8 +253,10 @@ public partial class MainWindow : Window
 
             // 啟動時一天最多檢查一次；有新版可依設定背景下載或自動安裝，重啟仍由使用者決定。
             _ = RunStartupUpdateCheckAsync();
+            _updateCheckTimer.Start();
             _pendingUploadTimer.Start();
             _networkTimer.Start();
+            _powerTimer.Start();
             _ = HandleRestartPromptAsync();
             _ = TryUploadPendingRecordsAsync();
             RefreshPendingButton();
@@ -545,6 +562,7 @@ public partial class MainWindow : Window
         {
             _simulatorView = new SimulatorView(_tokenStore, _deviceNameStore);
             _simulatorView.BackToHomeRequested += (_, _) => ShowHomePage();
+            _simulatorView.BatteryPauseEnded += (_, _) => _resumeStore.Clear();
             SimulatorHost.Children.Add(_simulatorView);
         }
 
@@ -648,9 +666,11 @@ public partial class MainWindow : Window
         };
         window.ShowDialog();
 
-        // 設定畫面可能改了「縮小到系統匣」，回來後重新套用。
+        // 設定畫面可能改了「縮小到系統匣」與低電量暫停，回來後重新套用。
         _minimizeToTray = _traySettingsStore.Load().MinimizeToTray;
         _trayIcon.Visible = _minimizeToTray;
+        _powerSettings = _powerSettingsStore.Load();
+        UpdatePowerState();
     }
 
     private void CheckCloudUpdates_Click(object sender, RoutedEventArgs e) =>
@@ -679,12 +699,39 @@ public partial class MainWindow : Window
         }
 
         _startupUpdateCheckAttempted = true;
+        await RunAutoUpdateCheckAsync();
+    }
+
+    /// <summary>啟動時與定時呼叫：距離上次檢查超過設定的間隔才查詢 GitHub Release。</summary>
+    private async Task RunAutoUpdateCheckAsync()
+    {
+        // 正在下載、已下載待安裝或已安裝待重啟時，不用再查。
+        if (_autoUpdateCheckRunning || _closing || !_isOnline ||
+            _backgroundUpdateRunning || _backgroundDownloadPaused ||
+            _downloadedUpdatePath != null || _installedUpdateVersion != null)
+        {
+            return;
+        }
+
         var now = DateTimeOffset.Now;
         if (!_updateCheckStore.ShouldAutoCheck(now))
         {
             return;
         }
 
+        _autoUpdateCheckRunning = true;
+        try
+        {
+            await CheckForUpdateAutomaticallyAsync(now);
+        }
+        finally
+        {
+            _autoUpdateCheckRunning = false;
+        }
+    }
+
+    private async Task CheckForUpdateAutomaticallyAsync(DateTimeOffset now)
+    {
         UpdateInfo? update = null;
         try
         {
@@ -697,7 +744,7 @@ public partial class MainWindow : Window
         }
         catch (Exception)
         {
-            // 啟動檢查失敗不跳錯誤視窗；也不記錄檢查時間，下次啟動會再試。
+            // 自動檢查失敗不跳錯誤視窗；也不記錄檢查時間，下一輪定時檢查或下次啟動會再試。
             return;
         }
 
@@ -727,6 +774,18 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 同一個版本這次執行只詢問一次，之後定時檢查只顯示提示列，避免一直跳視窗。
+        if (string.Equals(_promptedUpdateVersion, update.Version, StringComparison.OrdinalIgnoreCase))
+        {
+            ShowUpdateBanner(
+                $"有新版本 v{update.Version}，可按「檢查雲端更新」開啟更新畫面。",
+                showInstall: false,
+                showRestart: false);
+            return;
+        }
+
+        _promptedUpdateVersion = update.Version;
+        NotifyTray($"發現新版本 v{update.Version}。");
         var answer = MessageBox.Show(
             this,
             $"有新版本 v{update.Version}（目前 v{AppVersion.Current}）。\n\n要開啟更新畫面嗎？",
@@ -1463,6 +1522,65 @@ public partial class MainWindow : Window
         }
     }
 
+    private void PowerMode_Changed(object? sender, Microsoft.Win32.PowerModeChangedEventArgs e)
+    {
+        // 接上／拔掉電源或電量變化時立即檢查，不用等 30 秒的定時檢查。
+        if (e.Mode == Microsoft.Win32.PowerModes.StatusChange)
+        {
+            Dispatcher.BeginInvoke(new Action(UpdatePowerState));
+        }
+    }
+
+    /// <summary>筆電電量降到門檻以下自動暫停模擬並寫入暫存檔；接上電源後依設定自動繼續或提醒。</summary>
+    private void UpdatePowerState()
+    {
+        if (_closing || _simulatorView == null)
+        {
+            return;
+        }
+
+        var reading = PowerStatusReader.Read();
+        var action = _batteryPausePolicy.Evaluate(
+            reading,
+            _powerSettings,
+            _simulatorView.IsSimulating,
+            _simulatorView.IsPausedByBattery);
+        switch (action)
+        {
+            case BatteryPauseAction.Pause:
+                var snapshot = _simulatorView.PauseForLowBattery(reading.BatteryPercent);
+                var saved = false;
+                if (snapshot != null)
+                {
+                    try
+                    {
+                        _resumeStore.Save(snapshot);
+                        saved = true;
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        SyncStatusText.Text = "低電量暫停：暫存檔寫入失敗：" + ex.Message;
+                    }
+                }
+
+                NotifyTray(
+                    $"筆電電量剩 {reading.BatteryPercent?.ToString() ?? "?"}%，已暫停模擬" +
+                    (saved ? "並寫入暫存檔。" : "。") +
+                    (_powerSettings.ResumeMode == BatteryResumeMode.Automatic
+                        ? "接上電源後會自動繼續。"
+                        : "接上電源後按「繼續」接續。"));
+                break;
+            case BatteryPauseAction.Resume:
+                _simulatorView.ResumeAfterCharging(_isOnline);
+                NotifyTray("已接上電源，模擬自動繼續。");
+                break;
+            case BatteryPauseAction.NotifyCharging:
+                _simulatorView.NotifyChargingStarted();
+                NotifyTray("已接上電源，可以按「繼續」接續模擬。");
+                break;
+        }
+    }
+
     private void ShowUpdateBanner(string text, bool showInstall, bool showRestart, bool showPause = false)
     {
         UpdateBanner.Visibility = Visibility.Visible;
@@ -1497,9 +1615,26 @@ public partial class MainWindow : Window
             }
         }
 
+        // 已安裝更新但沒有按「重啟」就直接關閉：一樣暫停並暫存模擬，下次啟動（新版本）再詢問。
+        if (!_restartPending && _installedUpdateVersion != null &&
+            _simulatorView?.PrepareForRestart() is { } updateSnapshot)
+        {
+            try
+            {
+                _resumeStore.Save(updateSnapshot);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // 暫存失敗不擋關閉。
+            }
+        }
+
         _closing = true;
         _pendingUploadTimer.Stop();
         _networkTimer.Stop();
+        _powerTimer.Stop();
+        _updateCheckTimer.Stop();
+        Microsoft.Win32.SystemEvents.PowerModeChanged -= PowerMode_Changed;
         _downloadRetryTimer?.Stop();
         _backgroundDownloadCts?.Cancel();
         NetworkChange.NetworkAvailabilityChanged -= NetworkAvailability_Changed;

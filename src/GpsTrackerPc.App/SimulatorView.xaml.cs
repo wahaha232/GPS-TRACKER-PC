@@ -66,11 +66,17 @@ public partial class SimulatorView : UserControl
     private bool _autoLocateAttempted;
     private bool _pausedByNetwork;
     private double? _networkOutageStartedAt;
+    private bool _pausedByBattery;
+    private PlaybackProgressDisplay _progressDisplay = PlaybackProgressDisplay.Completed;
+    private double _progressFraction;
     private bool _closing;
     private Window? _hostWindow;
 
     /// <summary>使用者按下「回首頁」時通知主視窗切回紀錄網站。</summary>
     public event EventHandler? BackToHomeRequested;
+
+    /// <summary>低電量暫停結束（繼續、停止或重新開始播放）時通知主視窗清掉暫存檔。</summary>
+    public event EventHandler? BatteryPauseEnded;
 
     public SimulatorView(TokenStore tokenStore, DeviceNameStore deviceNameStore)
     {
@@ -88,6 +94,7 @@ public partial class SimulatorView : UserControl
         var mapSettings = _mapSettingsStore.Load();
         _basemap = BasemapCatalog.Options.First(option => option.Kind == mapSettings.Basemap);
         _followEnabled = mapSettings.Follow;
+        _progressDisplay = mapSettings.ProgressDisplay;
         _speedPresetStore = new SpeedPresetStore(AppPaths.SpeedPresetsFile);
         _speedPresets = _speedPresetStore.Load();
         _playbackTimer = new DispatcherTimer
@@ -105,6 +112,7 @@ public partial class SimulatorView : UserControl
         _updatingUi = false;
 
         RefreshSpeedPresetButtons();
+        SetProgressFraction(0.0);
         RefreshAllUi(updateName: false);
         RefreshFavorites();
         RefreshImportedGpxList();
@@ -115,6 +123,13 @@ public partial class SimulatorView : UserControl
     public PlaybackResult? LastPlaybackResult => _lastPlayback;
 
     public bool HasUnsavedChanges => _hasUnsavedChanges;
+
+    /// <summary>正在播放，或因網路中斷自動暫停（恢復連線會自己繼續）。</summary>
+    public bool IsSimulating =>
+        _playback?.State == PlaybackState.Playing ||
+        (_pausedByNetwork && _playback?.State == PlaybackState.Paused);
+
+    public bool IsPausedByBattery => _pausedByBattery;
 
     /// <summary>重啟程式前呼叫：暫停播放並把目前路線與取樣點交給呼叫端暫存。</summary>
     public SimulationResumeSnapshot? PrepareForRestart()
@@ -129,7 +144,18 @@ public partial class SimulatorView : UserControl
 
             _playbackTimer.Stop();
             _playbackWatch.Reset();
+            return CaptureResumeSnapshot(wasPlaying, SimulationPauseReason.Update);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 
+    private SimulationResumeSnapshot? CaptureResumeSnapshot(bool wasPlaying, SimulationPauseReason reason)
+    {
+        try
+        {
             var samples = _playback?.Samples ?? _lastPlayback?.Samples;
             var hasPlayback = samples is { Count: >= 2 };
             if (!hasPlayback && !_hasUnsavedChanges)
@@ -157,7 +183,8 @@ public partial class SimulatorView : UserControl
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 _route.Name,
                 _selectedWaypointId,
-                _hasUnsavedChanges);
+                _hasUnsavedChanges,
+                reason);
         }
         catch (Exception)
         {
@@ -203,6 +230,8 @@ public partial class SimulatorView : UserControl
         SendRoute();
         PostFit();
         NetworkOutageText.Text = string.Empty;
+        _pausedByBattery = false;
+        BatteryPauseText.Text = string.Empty;
 
         if (snapshot.Samples.Count < 2)
         {
@@ -261,8 +290,94 @@ public partial class SimulatorView : UserControl
         }
         else
         {
-            SetStatus($"已恢復暫停中的模擬（{controller.ElapsedSeconds:0} 秒），按「繼續」再開始播放。");
+            SetStatus(snapshot.PauseReason == SimulationPauseReason.LowBattery
+                ? $"已恢復低電量暫停的模擬（{controller.ElapsedSeconds:0} 秒），按「繼續」再開始播放。"
+                : $"已恢復暫停中的模擬（{controller.ElapsedSeconds:0} 秒），按「繼續」再開始播放。");
         }
+    }
+
+    /// <summary>
+    /// 筆電電量不足時自動暫停（網路中斷暫停中也會改成低電量暫停，避免恢復連線就自己繼續），
+    /// 回傳要寫進暫存檔的狀態，讓電量耗盡關機後重新開啟仍可接續。
+    /// </summary>
+    public SimulationResumeSnapshot? PauseForLowBattery(int? batteryPercent)
+    {
+        if (!IsSimulating)
+        {
+            return null;
+        }
+
+        if (_playback!.State == PlaybackState.Playing)
+        {
+            _playback.Pause();
+        }
+
+        _playbackTimer.Stop();
+        _playbackWatch.Reset();
+        _pausedByNetwork = false;
+        _pausedByBattery = true;
+        UpdatePlaybackUi();
+        SetPlaybackControlState();
+        var percentText = batteryPercent is { } percent ? $"{percent}%" : "不足";
+        BatteryPauseText.Text =
+            $"電量 {percentText}：{FormatElapsed(_playback.ElapsedSeconds)} 起暫停模擬，接上電源後可繼續。";
+        SetStatus($"筆電電量 {percentText}，已自動暫停模擬並寫入暫存檔。");
+        return CaptureResumeSnapshot(wasPlaying: false, SimulationPauseReason.LowBattery);
+    }
+
+    /// <summary>低電量暫停中接上電源且設定為自動繼續。離線時改成等網路恢復再繼續。</summary>
+    public void ResumeAfterCharging(bool online)
+    {
+        if (!_pausedByBattery)
+        {
+            return;
+        }
+
+        EndBatteryPause();
+        if (_playback?.State != PlaybackState.Paused)
+        {
+            return;
+        }
+
+        if (!online)
+        {
+            _pausedByNetwork = true;
+            _networkOutageStartedAt = _playback.ElapsedSeconds;
+            NetworkOutageText.Text =
+                $"網路中斷：{FormatElapsed(_playback.ElapsedSeconds)} 起（已接上電源，恢復連線後自動繼續）";
+            SetStatus("已接上電源，但網路中斷；恢復連線後會自動繼續模擬。");
+            return;
+        }
+
+        _playback.Resume();
+        _playbackWatch.Restart();
+        _playbackTimer.Start();
+        SetPlaybackControlState();
+        SetStatus("已接上電源，自動繼續模擬。");
+    }
+
+    /// <summary>低電量暫停中接上電源且設定為手動繼續：提醒可以按「繼續」。</summary>
+    public void NotifyChargingStarted()
+    {
+        if (!_pausedByBattery)
+        {
+            return;
+        }
+
+        BatteryPauseText.Text = "已接上電源充電中，按「繼續」即可從暫停點接續模擬。";
+        SetStatus("已接上電源，按「繼續」即可接續模擬。");
+    }
+
+    private void EndBatteryPause()
+    {
+        if (!_pausedByBattery)
+        {
+            return;
+        }
+
+        _pausedByBattery = false;
+        BatteryPauseText.Text = string.Empty;
+        BatteryPauseEnded?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>網路中斷時自動暫停；恢復連線後由 <see cref="ResumeAfterNetworkOutage"/> 接續。</summary>
@@ -1470,6 +1585,7 @@ public partial class SimulatorView : UserControl
         _pausedByNetwork = false;
         _networkOutageStartedAt = null;
         NetworkOutageText.Text = string.Empty;
+        EndBatteryPause();
         _lastPlaybackCoordinate = controller.Current?.Coordinates;
         _mapStream = new PlaybackMapStream();
         _pendingFullFrame = null;
@@ -1525,6 +1641,7 @@ public partial class SimulatorView : UserControl
         _playbackWatch.Restart();
         _playbackTimer.Start();
         _pausedByNetwork = false;
+        EndBatteryPause();
         SetPlaybackControlState();
         SetStatus("繼續播放。");
     }
@@ -1542,6 +1659,7 @@ public partial class SimulatorView : UserControl
         _pausedByNetwork = false;
         _networkOutageStartedAt = null;
         NetworkOutageText.Text = string.Empty;
+        EndBatteryPause();
         _lastPlayback = _playback.BuildResult();
         AppendNewPlaybackSamples();
         if (_mapUpdatesEnabled)
@@ -1619,7 +1737,7 @@ public partial class SimulatorView : UserControl
                 _pendingFullFrame = frame;
             }
 
-            PlaybackProgress.Value = 100;
+            SetProgressFraction(1.0);
             PlaybackOutageText.Text = string.Empty;
             PlaybackMetaText.Text = result.Samples.Count == 0
                 ? "沒有取樣點（整段可能都在 GPS 中斷）"
@@ -1834,7 +1952,7 @@ public partial class SimulatorView : UserControl
         }
 
         var current = _playback.Current;
-        PlaybackProgress.Value = Math.Clamp(_playback.Progress * 100.0, 0.0, 100.0);
+        SetProgressFraction(_playback.Progress);
         PlaybackMetaText.Text =
             $"已過 {FormatClock((long)Math.Floor(current.ElapsedSeconds))}｜" +
             $"目前 {(current.SpeedMetersPerSecond * 3.6).ToString("0.0", CultureInfo.InvariantCulture)} km/h｜" +
@@ -1842,6 +1960,22 @@ public partial class SimulatorView : UserControl
         PlaybackOutageText.Text = _playback.IsInOutage
             ? "GPS 中斷中（不記錄位置）"
             : string.Empty;
+    }
+
+    private void SetProgressFraction(double fraction)
+    {
+        _progressFraction = Math.Clamp(double.IsNaN(fraction) ? 0.0 : fraction, 0.0, 1.0);
+        PlaybackProgress.Value = _progressFraction * 100.0;
+        ProgressDisplayButton.Content = PlaybackProgressFormatter.Format(_progressFraction, _progressDisplay);
+    }
+
+    private void ProgressDisplay_Click(object sender, RoutedEventArgs e)
+    {
+        _progressDisplay = _progressDisplay == PlaybackProgressDisplay.Completed
+            ? PlaybackProgressDisplay.Remaining
+            : PlaybackProgressDisplay.Completed;
+        SetProgressFraction(_progressFraction);
+        SaveMapSettings();
     }
 
     private void SetPlaybackControlState()
@@ -1924,7 +2058,7 @@ public partial class SimulatorView : UserControl
     {
         try
         {
-            _mapSettingsStore.Save(new SimulatorMapSettings(_basemap.Kind, _followEnabled));
+            _mapSettingsStore.Save(new SimulatorMapSettings(_basemap.Kind, _followEnabled, _progressDisplay));
         }
         catch (Exception ex)
         {
