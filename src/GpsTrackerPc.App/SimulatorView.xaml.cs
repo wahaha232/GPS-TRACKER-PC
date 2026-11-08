@@ -122,6 +122,15 @@ public partial class SimulatorView : UserControl
     /// <summary>給第 7 階段使用的最近一次播放／直接產生結果。</summary>
     public PlaybackResult? LastPlaybackResult => _lastPlayback;
 
+    /// <summary>
+    /// 目前模擬路線上的位置（播放中、暫停、結束或直接產生都算）。
+    /// 好友分享一律使用這個位置，不使用裝置實際的 Windows 定位。
+    /// </summary>
+    public Coordinates? CurrentSimulatedCoordinates =>
+        _playback?.Current?.Coordinates
+        ?? _lastPlaybackCoordinate
+        ?? _route.Waypoints.FirstOrDefault()?.Coordinates;
+
     public bool HasUnsavedChanges => _hasUnsavedChanges;
 
     /// <summary>正在播放，或因網路中斷自動暫停（恢復連線會自己繼續）。</summary>
@@ -274,6 +283,18 @@ public partial class SimulatorView : UserControl
             lat = current?.Coordinates.Latitude,
             lon = current?.Coordinates.Longitude,
         });
+
+        // 恢復上次播放時直接定位到暫停點，不要讓地圖停在預設的台北 101。
+        if (current != null)
+        {
+            Post(new
+            {
+                type = "locatePosition",
+                lat = current.Coordinates.Latitude,
+                lon = current.Coordinates.Longitude,
+            });
+        }
+
         if (_mapUpdatesEnabled)
         {
             SendMapFrame(_mapStream.BuildFrame(forceReplace: true));
@@ -532,8 +553,9 @@ public partial class SimulatorView : UserControl
                     SetPlaybackControlState();
                     UpdateMapActivity();
 
-                    // 路線還是空的就自動定位一次，讓地圖一開啟就在使用者附近。
-                    if (_route.Waypoints.Count == 0)
+                    // 啟動時一律以 Windows 目前位置為地圖中心（即使已經有路線）；
+                    // 若是恢復上次播放，_playback 已經存在，改由暫停點定位。
+                    if (_playback == null)
                     {
                         _ = AutoLocateAsync();
                     }
@@ -2225,7 +2247,7 @@ public partial class SimulatorView : UserControl
         await LocateFromWindowsAsync(center: true, quiet: false);
     }
 
-    /// <summary>開啟視窗且路線還是空的時候自動定位一次，把地圖移到使用者附近。</summary>
+    /// <summary>開啟模擬頁時自動定位一次，把地圖移到使用者目前位置。</summary>
     private async Task AutoLocateAsync()
     {
         if (_autoLocateAttempted || _locating || _closing)
@@ -2234,7 +2256,7 @@ public partial class SimulatorView : UserControl
         }
 
         _autoLocateAttempted = true;
-        await LocateFromWindowsAsync(center: _route.Waypoints.Count == 0, quiet: true);
+        await LocateFromWindowsAsync(center: _playback == null, quiet: true);
     }
 
     private async Task LocateFromWindowsAsync(bool center, bool quiet)

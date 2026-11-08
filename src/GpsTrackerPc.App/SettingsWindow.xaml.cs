@@ -72,6 +72,19 @@ public partial class SettingsWindow : Window
         RefreshTokenStatus();
     }
 
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+
+        // 小螢幕筆電的可用高度可能小於設定頁的設計高度；限制在可用區域內，
+        // 中間內容會自動出現捲軸，底部的「套用」按鈕才不會被推到畫面外。
+        var workArea = SystemParameters.WorkArea;
+        MaxWidth = Math.Max(520, workArea.Width - 32);
+        MaxHeight = Math.Max(420, workArea.Height - 32);
+        Width = Math.Min(Width, MaxWidth);
+        Height = Math.Min(Height, MaxHeight);
+    }
+
     private void SaveDeviceName_Click(object sender, RoutedEventArgs e) =>
         TrySaveDeviceName(showSuccessMessage: true);
 

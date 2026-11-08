@@ -585,7 +585,9 @@ public partial class MainWindow : Window
     {
         if (_friendsView is null)
         {
-            _friendsView = new FriendsView(_deviceNameStore);
+            _friendsView = new FriendsView(
+                _deviceNameStore,
+                () => _simulatorView?.CurrentSimulatedCoordinates);
             _friendsView.BackToHomeRequested += (_, _) => ShowHomePage();
             FriendsHost.Children.Add(_friendsView);
         }

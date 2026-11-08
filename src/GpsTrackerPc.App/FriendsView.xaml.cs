@@ -23,6 +23,7 @@ public partial class FriendsView : UserControl
     private const string FriendsHost = "friends.local";
 
     private readonly DeviceNameStore _deviceNameStore;
+    private readonly Func<Coordinates?> _simulatedCoordinates;
     private readonly SocialSettingsStore _settingsStore;
     private readonly HttpClient _httpClient;
     private readonly NtfySocialTransport _transport;
@@ -52,11 +53,14 @@ public partial class FriendsView : UserControl
     private bool _active;
     private bool _closing;
 
-    public FriendsView(DeviceNameStore deviceNameStore)
+    public FriendsView(
+        DeviceNameStore deviceNameStore,
+        Func<Coordinates?> simulatedCoordinates)
     {
         InitializeComponent();
 
         _deviceNameStore = deviceNameStore ?? throw new ArgumentNullException(nameof(deviceNameStore));
+        _simulatedCoordinates = simulatedCoordinates ?? throw new ArgumentNullException(nameof(simulatedCoordinates));
         _settingsStore = new SocialSettingsStore(AppPaths.SocialFile);
         _settings = _settingsStore.Load();
         _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
@@ -97,6 +101,7 @@ public partial class FriendsView : UserControl
         if (active)
         {
             _fitMap = true;
+            RefreshSelfFromSimulation();
             _ = RefreshAsync(poll: true);
             PostMap();
         }
@@ -110,6 +115,7 @@ public partial class FriendsView : UserControl
             _ = InitializeMapAsync();
         }
 
+        RefreshSelfFromSimulation();
         if (_settings.ShareLocation)
         {
             _ = PublishSelfAsync();
@@ -133,6 +139,7 @@ public partial class FriendsView : UserControl
         if (visible)
         {
             _fitMap = true;
+            RefreshSelfFromSimulation();
             _ = RefreshAsync(poll: true);
             PostMap();
         }
@@ -223,6 +230,7 @@ public partial class FriendsView : UserControl
             return;
         }
 
+        RefreshSelfFromSimulation();
         var now = DateTimeOffset.Now;
         if (_settings.ShareLocation && now - _lastPublish >= SocialLimits.PublishInterval)
         {
@@ -233,6 +241,32 @@ public partial class FriendsView : UserControl
         {
             await RefreshAsync(poll: true);
         }
+    }
+
+    /// <summary>
+    /// 好友分享只使用模擬路線上的位置；沒有模擬位置時寧可顯示「尚未開始模擬」，
+    /// 也不要退回裝置實際的 Windows 定位。
+    /// </summary>
+    private void RefreshSelfFromSimulation()
+    {
+        if (_simulatedCoordinates() is not { } coordinates)
+        {
+            _selfCoordinates = null;
+            _selfAccuracyMeters = null;
+            _selfUpdatedAt = null;
+            _locationError = null;
+            return;
+        }
+
+        if (_selfCoordinates == coordinates)
+        {
+            return;
+        }
+
+        _selfCoordinates = coordinates;
+        _selfAccuracyMeters = null;
+        _selfUpdatedAt = DateTimeOffset.Now;
+        _locationError = null;
     }
 
     private async Task PublishSelfAsync()
@@ -246,28 +280,25 @@ public partial class FriendsView : UserControl
         _lastPublish = DateTimeOffset.Now;
         try
         {
-            var result = await CurrentLocationProvider.GetAsync();
+            RefreshSelfFromSimulation();
             if (_closing || !_settings.ShareLocation)
             {
                 return;
             }
 
-            if (!result.Success || result.Coordinates == null)
+            if (_selfCoordinates == null)
             {
-                _locationError = result.ErrorMessage ?? "無法取得目前位置。";
+                SetStatus("尚未開始模擬路線，沒有可分享的模擬位置。", error: true);
                 UpdateSelfStatus();
-                SetStatus(_locationError, error: true);
                 return;
             }
 
-            _selfCoordinates = result.Coordinates;
-            _selfAccuracyMeters = result.AccuracyMeters;
             _selfUpdatedAt = DateTimeOffset.Now;
             _locationError = null;
 
             if (_settings.Targets.Count == 0)
             {
-                SetStatus("已取得目前位置；尚未加入好友或群組，所以還沒有分享對象。");
+                SetStatus("已取得模擬位置；尚未加入好友或群組，所以還沒有分享對象。");
                 UpdateSelfStatus();
                 PostMap();
                 return;
@@ -285,7 +316,7 @@ public partial class FriendsView : UserControl
             var errors = await PublishToTargetsAsync(snapshot);
             if (errors.Count == 0)
             {
-                SetStatus("已更新並分享目前位置。");
+                SetStatus("已更新並分享模擬位置。");
             }
             else
             {
@@ -305,7 +336,7 @@ public partial class FriendsView : UserControl
                 return;
             }
 
-            _locationError = "分享位置失敗：" + ex.Message;
+            _locationError = "分享模擬位置失敗：" + ex.Message;
             UpdateSelfStatus();
             SetStatus(_locationError, error: true);
         }
@@ -317,6 +348,7 @@ public partial class FriendsView : UserControl
 
     private async Task PublishStoppedAsync()
     {
+        RefreshSelfFromSimulation();
         if (_closing || _selfCoordinates == null || _settings.Targets.Count == 0)
         {
             return;
@@ -432,6 +464,7 @@ public partial class FriendsView : UserControl
 
     private void RefreshRows()
     {
+        RefreshSelfFromSimulation();
         _refreshingRows = true;
         var selectedGroupBefore = _selectedGroupId;
         try
@@ -586,6 +619,7 @@ public partial class FriendsView : UserControl
             return;
         }
 
+        RefreshSelfFromSimulation();
         var now = DateTimeOffset.Now;
         IEnumerable<SocialPeer> peers = _directory.BuildPeers(
             _settings.Targets,
@@ -663,7 +697,7 @@ public partial class FriendsView : UserControl
 
         if (_selfCoordinates == null || _selfUpdatedAt == null)
         {
-            SelfStatusText.Text = "分享中，正在取得目前位置…";
+            SelfStatusText.Text = "分享中，尚未開始模擬路線，沒有可分享的模擬位置。";
             SelfStatusText.SetResourceReference(TextBlock.ForegroundProperty, "AppTextMuted");
             return;
         }
@@ -672,7 +706,7 @@ public partial class FriendsView : UserControl
             ? $"（±{meters.ToString("F0", CultureInfo.InvariantCulture)} m）"
             : string.Empty;
         SelfStatusText.Text =
-            "分享中：" +
+            "分享模擬位置：" +
             _selfCoordinates.Latitude.ToString("F6", CultureInfo.InvariantCulture) + ", " +
             _selfCoordinates.Longitude.ToString("F6", CultureInfo.InvariantCulture) +
             accuracy + "・" + _selfUpdatedAt.Value.ToLocalTime().ToString("HH:mm:ss");
@@ -712,7 +746,7 @@ public partial class FriendsView : UserControl
         if (enabled)
         {
             _lastPublish = DateTimeOffset.MinValue;
-            SetStatus("已開啟分享，正在取得目前位置…");
+            SetStatus("已開啟分享，正在取得模擬位置…");
             await PublishSelfAsync();
         }
         else
