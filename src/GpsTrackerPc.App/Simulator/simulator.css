@@ -136,6 +136,11 @@ body {
   border-top-color: #1e293b;
 }
 
+/* 底色是深色，MapLibre 預設的深灰圖示（＋／－）會看不見，反白成淺色。 */
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(1) brightness(1.4);
+}
+
 #mapError {
   position: absolute;
   inset: 0;
