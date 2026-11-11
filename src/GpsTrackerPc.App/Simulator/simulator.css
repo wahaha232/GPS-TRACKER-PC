@@ -128,6 +128,11 @@ body {
   color: #7dd3fc;
 }
 
+/* 視窗較窄時屬性說明收合成「ⓘ」按鈕，預設的深色圖示在深色底上看不見，反白成淺色。 */
+.maplibregl-ctrl-attrib-button {
+  filter: invert(1);
+}
+
 .maplibregl-ctrl-group {
   background: #111a2e;
 }
